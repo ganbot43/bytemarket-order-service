@@ -1,0 +1,70 @@
+server:
+  port: ${ORDER_SERVICE_PORT:8083}
+
+spring:
+  application:
+    name: bytemarket-order-service
+  profiles:
+    active: ${SPRING_PROFILE:local}
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME_ORDER:bytemarket_order}?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    username: ${DB_USER:root}
+    password: ${DB_PASSWORD:mysql}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect
+
+  # Mensajería: preparada, todavía sin usar.
+  #
+  # Hoy es inerte porque ningún pom.xml incluye AMQP ni Kafka: Spring la
+  # ignora. Las credenciales decían user/password, que no coinciden con el
+  # guest/guest de la imagen de docker-compose; corregidas para que funcione
+  # el día que se active añadiendo al pom:
+  #   spring-boot-starter-amqp   (RabbitMQ)
+  #   spring-kafka               (Kafka)
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+  kafka:
+    bootstrap-servers: ${KAFKA_SERVERS:localhost:9094}
+    consumer:
+      group-id: ${KAFKA_GROUP:bytemarket-order}
+      auto-offset-reset: earliest
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+
+# El checkout consulta precios y stock a catalog-service por Feign. Sin estos
+# tiempos, una llamada colgada dejaría la compra del cliente esperando.
+feign:
+  client:
+    config:
+      default:
+        connectTimeout: 3000
+        readTimeout: 8000
+
+# Valores por defecto para cuando se arranca sin el perfil local (el perfil
+# local define los reales en application-local.yml).
+jwt:
+  secret: ${JWT_SECRET:}
+  expiration: ${JWT_EXPIRATION:86400000}
+aws:
+  region: ${S3_REGION:us-east-2}
+  access:
+    key: ${S3_ACCESS_KEY_ID:}
+  secret:
+    key: ${S3_SECRET_ACCESS_KEY:}
+  s3:
+    bucket: ${S3_BUCKET:}
+    root-prefix: ${S3_ROOT_PREFIX:bytemarket}

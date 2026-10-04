@@ -1,0 +1,27 @@
+# Perfil local.
+#
+# Aquí NO van credenciales: este archivo se versiona. Los valores reales
+# viven en el .env de este mismo directorio, que está en .gitignore.
+# Copia .env.example a .env y rellénalo antes de arrancar.
+aws:
+  region: ${S3_REGION:us-east-2}
+  access:
+    key: ${S3_ACCESS_KEY_ID:}
+  secret:
+    key: ${S3_SECRET_ACCESS_KEY:}
+  s3:
+    bucket: ${S3_BUCKET:}
+    root-prefix: ${S3_ROOT_PREFIX:bytemarket}
+
+# El secreto debe ser idéntico en los cuatro servicios de negocio:
+# user-service firma el token y catalog, order y support verifican la firma.
+jwt:
+  secret: ${JWT_SECRET:}
+  expiration: ${JWT_EXPIRATION:86400000}
+
+spring:
+  mail:
+    host: ${SMTP_HOST:smtp.gmail.com}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USER:}
+    password: ${SMTP_PASSWORD:}
