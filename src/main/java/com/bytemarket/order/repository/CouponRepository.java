@@ -12,4 +12,7 @@ import java.util.Optional;
 public interface CouponRepository extends JpaRepository<Coupon, Integer> {
     Optional<Coupon> findByCode(String code);
     Page<Coupon> findAllByOrderByCreatedAtDesc(Pageable pageable);
+
+    /** Búsqueda por código para el panel. */
+    Page<Coupon> findByCodeContainingIgnoreCaseOrderByCreatedAtDesc(String code, Pageable pageable);
 }

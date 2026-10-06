@@ -27,9 +27,14 @@ public class ApiAdminCouponController {
 
     @GetMapping
     public Map<String, Object> list(@RequestParam(defaultValue = "20") int limit,
-                                    @RequestParam(defaultValue = "0") int offset) {
+                                    @RequestParam(defaultValue = "0") int offset,
+                                    @RequestParam(required = false) String q) {
         int tamano = Math.max(1, limit);
-        Page<Coupon> page = couponRepository.findAllByOrderByCreatedAtDesc(PageRequest.of(offset / tamano, tamano));
+        PageRequest pagina = PageRequest.of(offset / tamano, tamano);
+
+        Page<Coupon> page = (q == null || q.isBlank())
+                ? couponRepository.findAllByOrderByCreatedAtDesc(pagina)
+                : couponRepository.findByCodeContainingIgnoreCaseOrderByCreatedAtDesc(q.trim(), pagina);
 
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("data", page.getContent().stream().map(ApiAdminCouponController::dto).toList());

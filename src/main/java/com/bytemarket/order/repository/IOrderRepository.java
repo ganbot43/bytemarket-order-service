@@ -27,6 +27,22 @@ public interface IOrderRepository extends JpaRepository<Order, Integer> {
     Page<Order> findAllByOrderByCreatedAtDesc(Pageable pageable);
     Page<Order> findByStatusOrderByCreatedAtDesc(String status, Pageable pageable);
 
+    /** Listado del panel con estado y texto opcionales. Busca por código,
+        nombre y teléfono: son los tres datos con los que llega un cliente
+        preguntando por su pedido. */
+    @Query("""
+            SELECT o FROM Order o
+            WHERE (:status IS NULL OR o.status = :status)
+              AND (:patron IS NULL
+                   OR LOWER(o.orderCode) LIKE :patron
+                   OR LOWER(COALESCE(o.customerName, '')) LIKE :patron
+                   OR LOWER(COALESCE(o.customerPhone, '')) LIKE :patron)
+            ORDER BY o.createdAt DESC
+            """)
+    Page<Order> buscar(@Param("status") String status,
+                       @Param("patron") String patron,
+                       Pageable pageable);
+
     /** Pedidos abiertos, los más antiguos primero: son los que urge atender. */
     List<Order> findByStatusInOrderByCreatedAtAsc(List<String> statuses);
 
