@@ -96,13 +96,42 @@ El descuento nunca deja el total en negativo: se recorta al subtotal.
 
 ## Cómo levantarlo
 
+### Con Docker (recomendado)
+
+Este servicio es una pieza del sistema; lo normal es levantarlo junto a los
+demás desde la carpeta padre, que trae el `docker-compose.yml`:
+
+```bash
+cd ..
+docker compose up -d
+```
+
+Para ver solo su log o reiniciarlo:
+
+```bash
+docker compose logs -f order-service
+docker compose restart order-service
+```
+
+El `Dockerfile` de este repo es multietapa: compila con Maven y la imagen
+final solo lleva el JRE y el jar. No hace falta empaquetar antes.
+
+### A mano
+
 Requisitos: **Java 17+**, **MySQL 8** en `localhost:3306` y el
 `bytemarket-eureka-server` ya arrancado (salvo que este repo *sea* Eureka).
 
 ```bash
-cp .env.example .env     # y rellena los valores
 ./mvnw spring-boot:run
 ```
+
+> La configuración sale del `.env` de la **carpeta padre**, uno solo para
+> todos los servicios. Lo carga `spring-dotenv` gracias a
+> `src/main/resources/.env.properties`, que apunta a `..`; al arrancar desde
+> Eclipse el directorio de trabajo es esta carpeta, así que lo encuentra. Si
+> falta, `JWT_SECRET` queda vacío: el servicio levanta igual pero rechaza
+> cualquier token con 401 y sin dejar rastro en el log.
+
 
 Queda escuchando en el puerto **8083**. El esquema de base de datos se crea
 solo al arrancar (`createDatabaseIfNotExist=true`).

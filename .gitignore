@@ -38,5 +38,10 @@ build/
 .env.*
 !.env.example
 
+# .env.properties NO lleva secretos: solo dice dónde está el .env
+# (directory=..). Tiene que versionarse o el servicio no encuentra su
+# configuración al clonar el repo.
+!.env.properties
+
 ### macOS ###
 .DS_Store
