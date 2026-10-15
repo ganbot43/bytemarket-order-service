@@ -1,5 +1,6 @@
 package com.bytemarket.order.service;
 
+import com.bytemarket.order.messaging.StockPublisher;
 import com.bytemarket.order.dto.CartItemDTO;
 import com.bytemarket.order.model.*;
 import com.bytemarket.order.repository.*;
@@ -26,7 +27,7 @@ public class OrderService {
     private final IOrderStatusLogRepository statusLogRepository;
     private final IPaymentMethodRepository paymentMethodRepository;
     private final CartService cartService;
-    private final com.bytemarket.order.messaging.StockPublisher stockPublisher;
+    private final StockPublisher stockPublisher;
 
     /** Estados por los que puede pasar un pedido, en orden de avance. */
     public static final List<String> ESTADOS = List.of(

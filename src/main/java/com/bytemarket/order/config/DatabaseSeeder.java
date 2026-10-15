@@ -1,10 +1,10 @@
 package com.bytemarket.order.config;
 
+import lombok.RequiredArgsConstructor;
 import com.bytemarket.order.model.Coupon;
 import com.bytemarket.order.model.PaymentMethod;
 import com.bytemarket.order.repository.CouponRepository;
 import com.bytemarket.order.repository.IPaymentMethodRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
@@ -14,13 +14,12 @@ import java.time.LocalDate;
  * Seeder de ByteMarket (order-service): métodos de pago y cupones.
  */
 @Component
+@RequiredArgsConstructor
 public class DatabaseSeeder implements CommandLineRunner {
 
-    @Autowired
-    private IPaymentMethodRepository paymentMethodRepository;
+    private final IPaymentMethodRepository paymentMethodRepository;
 
-    @Autowired
-    private CouponRepository couponRepository;
+    private final CouponRepository couponRepository;
 
     @Override
     public void run(String... args) {

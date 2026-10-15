@@ -1,7 +1,6 @@
 package com.bytemarket.order.security;
 
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -21,11 +20,15 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableWebSecurity
 public class SecurityConfig {
 
-    @Autowired
-    private JwtAuthenticationFilter jwtAuthFilter;
-
+    /**
+     * El filtro llega como parámetro del @Bean y no como campo inyectado:
+     * una clase @Configuration que además produce beans puede entrar en
+     * conflicto de creación si se inyecta por constructor, y de este modo
+     * la dependencia queda donde se usa.
+     */
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http,
+                                                   JwtAuthenticationFilter jwtAuthFilter) throws Exception {
         http
             .csrf(csrf -> csrf.disable())
             .cors(cors -> cors.disable())
