@@ -28,6 +28,7 @@ public class OrderService {
     private final IPaymentMethodRepository paymentMethodRepository;
     private final CartService cartService;
     private final CatalogClient catalogClient;
+    private final com.bytemarket.order.messaging.StockPublisher stockPublisher;
 
     /** Estados por los que puede pasar un pedido, en orden de avance. */
     public static final List<String> ESTADOS = List.of(
@@ -81,16 +82,16 @@ public class OrderService {
     }
 
     /**
-     * El pedido ya está cerrado: si el catálogo falla al descontar, se avisa
-     * en el log y el pedido sigue en pie. Ajustar inventario a mano es menos
-     * malo que perder la venta del cliente.
+     * Se publica en la cola en vez de llamar a catalog directamente.
+     *
+     * Antes era una llamada Feign dentro de un try/catch: si catalog estaba
+     * caído el pedido seguía en pie pero el descuento se perdía, y había que
+     * repararlo con /api/admin/inventory/backfill. Ahora el mensaje espera en
+     * RabbitMQ y catalog lo aplica al volver, así que ya no hay que elegir
+     * entre perder la venta o perder el descuento.
      */
     private void descontarStock(Order order) {
-        try {
-            catalogClient.decrementStock(Map.of("orderId", order.getId(), "items", itemsPayload(order)));
-        } catch (Exception e) {
-            log.error("No se pudo descontar stock del pedido {}: {}", order.getOrderCode(), e.getMessage());
-        }
+        stockPublisher.publicarSalida(order.getId().longValue(), order.getOrderCode(), itemsPayload(order));
     }
 
     private void aplicarMetodoPago(Order order, Object rawId) {
@@ -162,11 +163,8 @@ public class OrderService {
 
         // Cancelar devuelve el stock; solo una vez, no al recancelar.
         if ("cancelled".equals(nuevoEstado) && !"cancelled".equals(anterior)) {
-            try {
-                catalogClient.restoreStock(Map.of("orderId", guardado.getId(), "items", itemsPayload(guardado)));
-            } catch (Exception e) {
-                log.error("No se pudo devolver stock del pedido {}: {}", guardado.getOrderCode(), e.getMessage());
-            }
+            stockPublisher.publicarEntrada(
+                    guardado.getId().longValue(), guardado.getOrderCode(), itemsPayload(guardado));
         }
         return guardado;
     }

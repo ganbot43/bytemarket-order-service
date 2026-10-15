@@ -13,7 +13,8 @@ import java.util.Map;
  * API interna de catalog-service. El precio y el stock se leen de aquí, no
  * del cuerpo que manda el navegador.
  */
-@FeignClient(name = "bytemarket-catalog-service", path = "/api/internal/products")
+@FeignClient(name = "bytemarket-catalog-service", path = "/api/internal/products",
+        fallback = CatalogClientFallback.class)
 public interface CatalogClient {
 
     @PostMapping("/resolve")

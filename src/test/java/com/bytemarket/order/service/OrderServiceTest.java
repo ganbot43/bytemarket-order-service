@@ -1,6 +1,7 @@
 package com.bytemarket.order.service;
 
 import com.bytemarket.order.client.CatalogClient;
+import com.bytemarket.order.messaging.StockPublisher;
 import com.bytemarket.order.model.Order;
 import com.bytemarket.order.model.OrderItem;
 import com.bytemarket.order.model.OrderStatusLog;
@@ -11,12 +12,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 /** Cambios de estado del pedido y devolución de stock al cancelar. */
@@ -25,6 +28,7 @@ class OrderServiceTest {
     private IOrderRepository orderRepository;
     private IOrderStatusLogRepository statusLogRepository;
     private CatalogClient catalogClient;
+    private StockPublisher stockPublisher;
     private OrderService orderService;
 
     @BeforeEach
@@ -32,8 +36,10 @@ class OrderServiceTest {
         orderRepository = mock(IOrderRepository.class);
         statusLogRepository = mock(IOrderStatusLogRepository.class);
         catalogClient = mock(CatalogClient.class);
+        stockPublisher = mock(StockPublisher.class);
         orderService = new OrderService(orderRepository, statusLogRepository,
-                mock(IPaymentMethodRepository.class), mock(CartService.class), catalogClient);
+                mock(IPaymentMethodRepository.class), mock(CartService.class), catalogClient,
+                stockPublisher);
 
         when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
     }
@@ -94,16 +100,16 @@ class OrderServiceTest {
     void cancelarDevuelveStock() {
         orderService.changeStatus(pedido("payment_validated"), "cancelled", "Cliente desistió", 5L);
 
+        // Ya no se llama a catalog directamente: se publica en la cola, para
+        // que la devolución no se pierda si catalog está caído.
         @SuppressWarnings("unchecked")
-        ArgumentCaptor<Map<String, Object>> cuerpo = ArgumentCaptor.forClass(Map.class);
-        verify(catalogClient).restoreStock(cuerpo.capture());
+        ArgumentCaptor<List<Map<String, Object>>> items = ArgumentCaptor.forClass(List.class);
+        verify(stockPublisher).publicarEntrada(eq(1L), eq("BM-20261004-1234"), items.capture());
+        verifyNoInteractions(catalogClient);
 
-        assertEquals(1, cuerpo.getValue().get("orderId"));
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> items = (List<Map<String, Object>>) cuerpo.getValue().get("items");
-        assertEquals(1, items.size());
-        assertEquals(7L, items.get(0).get("productId"));
-        assertEquals(3, items.get(0).get("quantity"));
+        assertEquals(1, items.getValue().size());
+        assertEquals(7L, items.getValue().get(0).get("productId"));
+        assertEquals(3, items.getValue().get(0).get("quantity"));
     }
 
     @Test
@@ -114,18 +120,22 @@ class OrderServiceTest {
         orderService.changeStatus(pedido("cancelled"), "cancelled", null, 1L);
         orderService.changeStatus(pedido("pending"), "delivered", null, 1L);
 
-        verify(catalogClient, never()).restoreStock(any());
+        verify(stockPublisher, never()).publicarEntrada(any(), any(), any());
     }
 
     @Test
-    @DisplayName("si el catálogo falla al devolver stock, el pedido sí queda cancelado")
-    void fallaCatalogoAlCancelar() {
-        when(catalogClient.restoreStock(any())).thenThrow(new RuntimeException("catálogo caído"));
-
+    @DisplayName("la cancelación se guarda antes de publicar el movimiento de stock")
+    void cancelaAunqueLaColaTarde() {
+        // StockPublisher absorbe sus propios fallos (si RabbitMQ no está, lo
+        // registra y sigue), así que cancelar nunca depende de la mensajería.
+        // Lo que sí debe cumplirse es el orden: primero se guarda el pedido.
         Order guardado = orderService.changeStatus(pedido("pending"), "cancelled", null, 1L);
 
-        assertEquals("cancelled", guardado.getStatus(),
-                "perder la devolución de stock no debe impedir la cancelación");
+        assertEquals("cancelled", guardado.getStatus());
+
+        InOrder orden = inOrder(orderRepository, stockPublisher);
+        orden.verify(orderRepository).save(any(Order.class));
+        orden.verify(stockPublisher).publicarEntrada(any(), any(), any());
     }
 
     @Test

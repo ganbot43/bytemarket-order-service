@@ -2,6 +2,14 @@ server:
   port: ${ORDER_SERVICE_PORT:8083}
 
 spring:
+  cloud:
+    openfeign:
+      # Envuelve cada llamada del CatalogClient en un circuit breaker. Ojo:
+      # la propiedad vive aquí desde Spring Cloud 2022; escrita como
+      # "feign.circuitbreaker.enabled" se ignora en silencio y los circuitos
+      # quedan registrados pero sin interceptar nada.
+      circuitbreaker:
+        enabled: true
   application:
     name: bytemarket-order-service
   profiles:
@@ -54,6 +62,47 @@ feign:
         connectTimeout: 3000
         readTimeout: 8000
 
+# ── Resiliencia de las llamadas a catalog-service ────────────
+# El circuito se abre tras 5 fallos seguidos y, mientras está abierto,
+# responde al instante en vez de agotar el timeout. A los 15 segundos deja
+# pasar 3 peticiones de prueba: si van bien, se cierra solo.
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 15s
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        # Hace falta para que el estado del circuito salga en
+        # /actuator/health, que es como se ve desde fuera si order-service
+        # está teniendo problemas para hablar con catalog.
+        registerHealthIndicator: true
+    instances:
+      # El checkout: se le dan los 8 segundos completos porque de esta
+      # llamada depende que el cliente pueda comprar.
+      CatalogClient#resolve(List):
+        baseConfig: default
+      # Lecturas del panel: esperar 8 segundos para acabar pintando una
+      # lista vacía no tiene sentido; a los 3 se corta.
+      CatalogClient#lowStock(int):
+        baseConfig: default
+      CatalogClient#exportProducts():
+        baseConfig: default
+  timelimiter:
+    configs:
+      default:
+        timeoutDuration: 8s
+        cancelRunningFuture: true
+    instances:
+      CatalogClient#lowStock(int):
+        timeoutDuration: 3s
+      CatalogClient#exportProducts():
+        timeoutDuration: 3s
+
 # Valores por defecto para cuando se arranca sin el perfil local (el perfil
 # local define los reales en application-local.yml).
 jwt:
@@ -68,3 +117,26 @@ aws:
   s3:
     bucket: ${S3_BUCKET:}
     root-prefix: ${S3_ROOT_PREFIX:bytemarket}
+
+# ── Sonda de salud ───────────────────────────────────────────
+# Solo se expone "health": los demás endpoints del actuator (env, beans,
+# mappings) revelan configuración interna y no hacen falta aquí.
+# Lo consulta el healthcheck de Docker, que así espera a que el servicio
+# esté REALMENTE listo —base de datos incluida— y no solo a que el puerto
+# responda.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+  health:
+    # Añade el estado de los circuitos a /actuator/health. Así se ve desde
+    # fuera si order-service está teniendo problemas para hablar con
+    # catalog, sin entrar a leer logs.
+    circuitbreakers:
+      enabled: true
