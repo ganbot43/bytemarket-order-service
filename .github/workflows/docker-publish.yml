@@ -9,9 +9,38 @@ on:
   workflow_dispatch:
 
 jobs:
+  # ── Pruebas: puerta de entrada ──────────────────────────────────
+  # El Dockerfile compila con -DskipTests, así que hasta ahora nada
+  # ejecutaba los tests y una imagen rota se publicaba igual: el único
+  # filtro era que compilara. Este job corre antes y build-and-push
+  # depende de él, así que si un test falla la imagen no llega al hub.
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Clonar repositorio
+        uses: actions/checkout@v4
+
+      # Misma versión que usa el Dockerfile para compilar.
+      - name: ☕ Preparar Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+          cache: maven
+
+      # El wrapper no siempre viaja con permiso de ejecución, y el
+      # respaldo a `mvn` es el mismo que ya usa el Dockerfile.
+      - name: 🧪 Ejecutar tests
+        run: |
+          chmod +x ./mvnw || true
+          ./mvnw test -B || mvn test -B
+
   # ── CI: construir y publicar en Docker Hub ──────────────────────
   build-and-push:
     name: Build y Push a Docker Hub
+    needs: test                    # sin tests en verde no se publica
     runs-on: ubuntu-latest
 
     steps:
