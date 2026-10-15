@@ -24,16 +24,22 @@ jobs:
           username: ${{ secrets.DOCKER_NAME }}
           password: ${{ secrets.DOCKER_TOKEN }}
 
+      # Necesario para construir una arquitectura distinta a la del runner.
+      - name: 🧬 Configurar QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: 🛠️ Configurar Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # linux/amd64 porque los servidores de nube son Intel/AMD. Construir
-      # esto en un Mac con Apple Silicon daría arm64 y allá no arrancaría.
+      # amd64 para el servidor y arm64 para probar en Mac con Apple Silicon.
+      # Aquí sale casi gratis: la etapa de Maven está fijada con
+      # --platform=$BUILDPLATFORM, así que compila nativa en el runner, y la
+      # etapa final solo copia el jar — que es el mismo bytecode para las dos.
       - name: 🔨 Build y Push imagen
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ganbito/bytemarket-order-service:latest
 
