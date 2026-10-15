@@ -1,6 +1,6 @@
 package com.bytemarket.order.service;
 
-import com.bytemarket.order.client.CatalogClient;
+import com.bytemarket.order.client.CatalogPricingClient;
 import com.bytemarket.order.dto.CartItemDTO;
 import com.bytemarket.order.model.Coupon;
 import com.bytemarket.order.model.OrderItem;
@@ -28,13 +28,13 @@ import static org.mockito.Mockito.*;
  */
 class CartServiceTest {
 
-    private CatalogClient catalogClient;
+    private CatalogPricingClient catalogClient;
     private CouponRepository couponRepository;
     private CartService cartService;
 
     @BeforeEach
     void setUp() {
-        catalogClient = mock(CatalogClient.class);
+        catalogClient = mock(CatalogPricingClient.class);
         couponRepository = mock(CouponRepository.class);
         cartService = new CartService(catalogClient, couponRepository);
     }

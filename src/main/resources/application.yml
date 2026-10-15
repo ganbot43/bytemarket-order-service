@@ -4,7 +4,8 @@ server:
 spring:
   cloud:
     openfeign:
-      # Envuelve cada llamada del CatalogClient en un circuit breaker. Ojo:
+      # Envuelve cada llamada a los clientes del catálogo en un circuit
+      # breaker. Ojo:
       # la propiedad vive aquí desde Spring Cloud 2022; escrita como
       # "feign.circuitbreaker.enabled" se ignora en silencio y los circuitos
       # quedan registrados pero sin interceptar nada.
@@ -84,13 +85,13 @@ resilience4j:
     instances:
       # El checkout: se le dan los 8 segundos completos porque de esta
       # llamada depende que el cliente pueda comprar.
-      CatalogClient#resolve(List):
+      CatalogPricingClient#resolve(List):
         baseConfig: default
       # Lecturas del panel: esperar 8 segundos para acabar pintando una
       # lista vacía no tiene sentido; a los 3 se corta.
-      CatalogClient#lowStock(int):
+      CatalogReportingClient#lowStock(int):
         baseConfig: default
-      CatalogClient#exportProducts():
+      CatalogReportingClient#exportProducts():
         baseConfig: default
   timelimiter:
     configs:
@@ -98,9 +99,9 @@ resilience4j:
         timeoutDuration: 8s
         cancelRunningFuture: true
     instances:
-      CatalogClient#lowStock(int):
+      CatalogReportingClient#lowStock(int):
         timeoutDuration: 3s
-      CatalogClient#exportProducts():
+      CatalogReportingClient#exportProducts():
         timeoutDuration: 3s
 
 # Valores por defecto para cuando se arranca sin el perfil local (el perfil

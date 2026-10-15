@@ -1,6 +1,6 @@
 package com.bytemarket.order.controller.api.admin;
 
-import com.bytemarket.order.client.CatalogClient;
+import com.bytemarket.order.client.CatalogReportingClient;
 import com.bytemarket.order.model.Order;
 import com.bytemarket.order.repository.IOrderRepository;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +27,7 @@ import java.util.Map;
 public class ApiAdminReportController {
 
     private final IOrderRepository orderRepository;
-    private final CatalogClient catalogClient;
+    private final CatalogReportingClient catalogReportingClient;
 
     /** Estados que siguen esperando algo de la tienda. */
     private static final List<String> ABIERTOS =
@@ -117,7 +117,7 @@ public class ApiAdminReportController {
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("orders", orderRepository.findAllByOrderByCreatedAtDesc(PageRequest.of(0, 1000)).getContent());
         try {
-            resp.put("products", catalogClient.exportProducts());
+            resp.put("products", catalogReportingClient.exportProducts());
         } catch (Exception e) {
             // Sin catálogo se exporta igual lo de pedidos en vez de fallar todo.
             log.error("No se pudo leer el catálogo para la exportación: {}", e.getMessage());
@@ -129,7 +129,7 @@ public class ApiAdminReportController {
     /** Un catálogo caído no debe tumbar el panel entero. */
     private List<Map<String, Object>> lowStockSeguro(int threshold) {
         try {
-            return catalogClient.lowStock(threshold);
+            return catalogReportingClient.lowStock(threshold);
         } catch (Exception e) {
             log.error("No se pudo leer el stock bajo del catálogo: {}", e.getMessage());
             return List.of();

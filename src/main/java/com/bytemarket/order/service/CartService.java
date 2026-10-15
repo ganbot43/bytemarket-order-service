@@ -1,6 +1,6 @@
 package com.bytemarket.order.service;
 
-import com.bytemarket.order.client.CatalogClient;
+import com.bytemarket.order.client.CatalogPricingClient;
 import com.bytemarket.order.dto.CartItemDTO;
 import com.bytemarket.order.model.Coupon;
 import com.bytemarket.order.model.OrderItem;
@@ -23,7 +23,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class CartService {
 
-    private final CatalogClient catalogClient;
+    private final CatalogPricingClient catalogPricingClient;
     private final CouponRepository couponRepository;
 
     /** Carrito valorado: las líneas ya con precio y el subtotal. */
@@ -54,7 +54,7 @@ public class CartService {
 
         List<Map<String, Object>> catalogo;
         try {
-            catalogo = catalogClient.resolve(new ArrayList<>(cantidades.keySet()));
+            catalogo = catalogPricingClient.resolve(new ArrayList<>(cantidades.keySet()));
         } catch (Exception e) {
             throw new CartException("No pudimos verificar los productos. Inténtalo en un momento.");
         }

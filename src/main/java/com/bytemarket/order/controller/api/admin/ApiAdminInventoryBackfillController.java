@@ -1,6 +1,6 @@
 package com.bytemarket.order.controller.api.admin;
 
-import com.bytemarket.order.client.CatalogClient;
+import com.bytemarket.order.client.CatalogInventoryClient;
 import com.bytemarket.order.model.Order;
 import com.bytemarket.order.model.OrderItem;
 import com.bytemarket.order.repository.IOrderRepository;
@@ -31,7 +31,7 @@ import java.util.Map;
 public class ApiAdminInventoryBackfillController {
 
     private final IOrderRepository orderRepository;
-    private final CatalogClient catalogClient;
+    private final CatalogInventoryClient catalogInventoryClient;
 
     @PostMapping("/backfill")
     public ResponseEntity<?> backfill() {
@@ -54,7 +54,7 @@ public class ApiAdminInventoryBackfillController {
 
         int creados;
         try {
-            Map<String, Object> res = catalogClient.backfillMovements(entradas);
+            Map<String, Object> res = catalogInventoryClient.backfillMovements(entradas);
             creados = res.get("created") == null ? 0 : Integer.parseInt(res.get("created").toString());
         } catch (Exception e) {
             log.error("El catálogo no pudo reconstruir los movimientos: {}", e.getMessage());

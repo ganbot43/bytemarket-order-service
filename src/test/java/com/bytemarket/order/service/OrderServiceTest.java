@@ -1,6 +1,5 @@
 package com.bytemarket.order.service;
 
-import com.bytemarket.order.client.CatalogClient;
 import com.bytemarket.order.messaging.StockPublisher;
 import com.bytemarket.order.model.Order;
 import com.bytemarket.order.model.OrderItem;
@@ -27,7 +26,6 @@ class OrderServiceTest {
 
     private IOrderRepository orderRepository;
     private IOrderStatusLogRepository statusLogRepository;
-    private CatalogClient catalogClient;
     private StockPublisher stockPublisher;
     private OrderService orderService;
 
@@ -35,11 +33,9 @@ class OrderServiceTest {
     void setUp() {
         orderRepository = mock(IOrderRepository.class);
         statusLogRepository = mock(IOrderStatusLogRepository.class);
-        catalogClient = mock(CatalogClient.class);
         stockPublisher = mock(StockPublisher.class);
         orderService = new OrderService(orderRepository, statusLogRepository,
-                mock(IPaymentMethodRepository.class), mock(CartService.class), catalogClient,
-                stockPublisher);
+                mock(IPaymentMethodRepository.class), mock(CartService.class), stockPublisher);
 
         when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
     }
@@ -101,11 +97,11 @@ class OrderServiceTest {
         orderService.changeStatus(pedido("payment_validated"), "cancelled", "Cliente desistió", 5L);
 
         // Ya no se llama a catalog directamente: se publica en la cola, para
-        // que la devolución no se pierda si catalog está caído.
+        // que la devolución no se pierda si catalog está caído. OrderService
+        // ni siquiera conoce ya al cliente del catálogo.
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<Map<String, Object>>> items = ArgumentCaptor.forClass(List.class);
         verify(stockPublisher).publicarEntrada(eq(1L), eq("BM-20261004-1234"), items.capture());
-        verifyNoInteractions(catalogClient);
 
         assertEquals(1, items.getValue().size());
         assertEquals(7L, items.getValue().get(0).get("productId"));
