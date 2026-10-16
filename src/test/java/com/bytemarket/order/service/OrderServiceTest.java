@@ -1,5 +1,6 @@
 package com.bytemarket.order.service;
 
+import com.bytemarket.order.messaging.PedidoEventPublisher;
 import com.bytemarket.order.messaging.StockPublisher;
 import com.bytemarket.order.model.Order;
 import com.bytemarket.order.model.OrderItem;
@@ -27,6 +28,7 @@ class OrderServiceTest {
     private IOrderRepository orderRepository;
     private IOrderStatusLogRepository statusLogRepository;
     private StockPublisher stockPublisher;
+    private PedidoEventPublisher pedidoEventPublisher;
     private OrderService orderService;
 
     @BeforeEach
@@ -34,8 +36,10 @@ class OrderServiceTest {
         orderRepository = mock(IOrderRepository.class);
         statusLogRepository = mock(IOrderStatusLogRepository.class);
         stockPublisher = mock(StockPublisher.class);
+        pedidoEventPublisher = mock(PedidoEventPublisher.class);
         orderService = new OrderService(orderRepository, statusLogRepository,
-                mock(IPaymentMethodRepository.class), mock(CartService.class), stockPublisher);
+                mock(IPaymentMethodRepository.class), mock(CartService.class), stockPublisher,
+                pedidoEventPublisher);
 
         when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
     }

@@ -42,6 +42,21 @@ public class Order {
     @Column(name = "customer_phone", columnDefinition = "TEXT")
     private String customerPhone;
 
+    /**
+     * Para avisar al cliente del avance de su pedido.
+     *
+     * No lo escribe el formulario de checkout: se copia del JWT al crear el
+     * pedido, que es la misma cuenta con la que el cliente entró. Pedirlo
+     * otra vez en el checkout sería dejar que escribiera uno distinto del de
+     * su cuenta, y entonces el aviso iría a donde no debe.
+     *
+     * Queda guardado en el pedido, y no se consulta a user-service al
+     * enviarlo, porque es el correo al que se prometió avisar ESE día: si
+     * mañana cambia el de su cuenta, el histórico sigue siendo cierto.
+     */
+    @Column(name = "customer_email", columnDefinition = "TEXT")
+    private String customerEmail;
+
     @Column(name = "customer_address", columnDefinition = "TEXT")
     private String customerAddress;
 

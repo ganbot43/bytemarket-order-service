@@ -1,5 +1,6 @@
 package com.bytemarket.order.service;
 
+import com.bytemarket.order.messaging.PedidoEventPublisher;
 import com.bytemarket.order.messaging.StockPublisher;
 import com.bytemarket.order.dto.CartItemDTO;
 import com.bytemarket.order.model.*;
@@ -28,6 +29,7 @@ public class OrderService {
     private final IPaymentMethodRepository paymentMethodRepository;
     private final CartService cartService;
     private final StockPublisher stockPublisher;
+    private final PedidoEventPublisher pedidoEventPublisher;
 
     /** Estados por los que puede pasar un pedido, en orden de avance. */
     public static final List<String> ESTADOS = List.of(
@@ -36,7 +38,7 @@ public class OrderService {
     // ─── Creación ───────────────────────────────────────────────
 
     @Transactional
-    public Order create(Map<String, Object> form, Long userId, List<CartItemDTO> items) {
+    public Order create(Map<String, Object> form, Long userId, String userEmail, List<CartItemDTO> items) {
         CartService.PricedCart carrito = cartService.price(items);
 
         String nombre = texto(form.get("customerName"));
@@ -52,6 +54,8 @@ public class OrderService {
         order.setCustomerName(nombre);
         order.setCustomerPhone(telefono);
         order.setCustomerAddress(direccion);
+        // Del token, no del formulario: ver el javadoc de Order.customerEmail.
+        order.setCustomerEmail(texto(userEmail));
         order.setCustomerReference(texto(form.get("customerReference")));
         order.setCustomerNotes(texto(form.get("customerNotes")));
         order.setVoucherUrl(texto(form.get("voucherUrl")));
@@ -77,6 +81,10 @@ public class OrderService {
         registrarLog(guardado, "pending", userId, "Pedido recibido");
 
         descontarStock(guardado);
+        // Después de guardar y de encolar el stock: solo se anuncia lo que ya
+        // es cierto en base. Al revés, un fallo al guardar dejaría publicado
+        // un pedido que no existe, y eso no se puede retirar de un topic.
+        pedidoEventPublisher.publicarCreado(guardado);
         return guardado;
     }
 
@@ -165,6 +173,10 @@ public class OrderService {
             stockPublisher.publicarEntrada(
                     guardado.getId().longValue(), guardado.getOrderCode(), itemsPayload(guardado));
         }
+
+        // Quién avisa al cliente de esto no se decide aquí: se publica el
+        // hecho y support-service, que es el que sabe de correos, lo recoge.
+        pedidoEventPublisher.publicarCambioDeEstado(guardado, anterior);
         return guardado;
     }
 

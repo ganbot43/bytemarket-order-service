@@ -37,6 +37,16 @@ public class SecurityConfig {
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "SUPERADMIN")
+                // La sonda queda abierta porque el healthcheck de Docker la
+                // consulta sin credenciales. No filtra nada: con
+                // show-details: when-authorized, al anónimo le responde solo
+                // {"status":"UP"}.
+                .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                // El resto del actuator, solo staff. Aquí viven el estado de
+                // los circuitos y las métricas, y el 8083 está publicado en
+                // docker-compose: dejarlos abiertos contaría a cualquiera
+                // cómo y cuándo falla el servicio.
+                .requestMatchers("/actuator/**").hasAnyRole("ADMIN", "SUPERADMIN")
                 .anyRequest().permitAll()
             )
             .exceptionHandling(ex -> ex

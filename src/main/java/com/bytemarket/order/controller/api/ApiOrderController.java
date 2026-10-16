@@ -34,7 +34,7 @@ public class ApiOrderController {
         if (auth.isEmpty()) return error(HttpStatus.UNAUTHORIZED, "Inicia sesión para completar tu pedido");
 
         try {
-            Order order = orderService.create(body, auth.get().id(), leerItems(body));
+            Order order = orderService.create(body, auth.get().id(), auth.get().email(), leerItems(body));
             return ResponseEntity.status(HttpStatus.CREATED).body(order);
         } catch (CartService.CartException e) {
             return error(HttpStatus.BAD_REQUEST, e.getMessage());

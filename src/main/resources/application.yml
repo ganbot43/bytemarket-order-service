@@ -28,14 +28,16 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.MySQL8Dialect
 
-  # Mensajería: preparada, todavía sin usar.
+  # ── Mensajería ───────────────────────────────────────────────
+  # Las dos están en uso y hacen cosas distintas:
   #
-  # Hoy es inerte porque ningún pom.xml incluye AMQP ni Kafka: Spring la
-  # ignora. Las credenciales decían user/password, que no coinciden con el
-  # guest/guest de la imagen de docker-compose; corregidas para que funcione
-  # el día que se active añadiendo al pom:
-  #   spring-boot-starter-amqp   (RabbitMQ)
-  #   spring-kafka               (Kafka)
+  #   RabbitMQ  → la ORDEN de descontar stock. Un consumidor, hay que
+  #               ejecutarla una vez, y si se pierde el inventario queda mal.
+  #   Kafka     → el HECHO de que el pedido cambió. Varios consumidores,
+  #               retenido y releíble; hoy lo lee support-service para avisar
+  #               al cliente por correo.
+  #
+  # El detalle de por qué no sobra ninguna está en KafkaConfig.
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
     port: ${RABBITMQ_PORT:5672}
@@ -43,9 +45,21 @@ spring:
     password: ${RABBITMQ_PASSWORD:guest}
   kafka:
     bootstrap-servers: ${KAFKA_SERVERS:localhost:9094}
-    consumer:
-      group-id: ${KAFKA_GROUP:bytemarket-order}
-      auto-offset-reset: earliest
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      # Confirmación de TODAS las réplicas antes de dar el envío por bueno.
+      # Con acks=1 (el valor por defecto) el líder confirma y, si se cae antes
+      # de replicar, el evento se pierde en silencio.
+      acks: all
+      retries: 3
+      properties:
+        # Sin esto el consumidor recibe el nombre de la clase de ORIGEN
+        # (com.bytemarket.order.messaging.PedidoEvento) en una cabecera e
+        # intenta instanciarla; en support-service esa clase no existe con
+        # ese paquete y la deserialización falla. Quitando la cabecera, cada
+        # consumidor mapea el JSON a su propia copia del contrato.
+        spring.json.add.type.headers: false
 
 eureka:
   client:
@@ -82,16 +96,26 @@ resilience4j:
         # /actuator/health, que es como se ve desde fuera si order-service
         # está teniendo problemas para hablar con catalog.
         registerHealthIndicator: true
+    # ── Nombres de instancia: OJO ──────────────────────────────
+    # Spring Cloud NO registra el circuito con la firma del método tal cual.
+    # Le quita '#', '(', ')' y las comas, así que
+    #   CatalogPricingClient#resolve(List)  →  CatalogPricingClientresolveList
+    #
+    # Estaban escritos con la firma completa y por tanto NINGUNA clave
+    # coincidía: resilience4j ignora en silencio las instancias que no existen.
+    # Para los circuitos no se notaba, porque configs.default se aplica a
+    # todos de todas formas; para el timelimiter de abajo sí, y los 3s de las
+    # lecturas del panel no se estaban aplicando nunca.
+    #
+    # Los nombres reales se consultan en /actuator/circuitbreakers.
     instances:
-      # El checkout: se le dan los 8 segundos completos porque de esta
-      # llamada depende que el cliente pueda comprar.
-      CatalogPricingClient#resolve(List):
+      # El checkout: los 8 segundos completos, porque de esta llamada
+      # depende que el cliente pueda comprar.
+      CatalogPricingClientresolveList:
         baseConfig: default
-      # Lecturas del panel: esperar 8 segundos para acabar pintando una
-      # lista vacía no tiene sentido; a los 3 se corta.
-      CatalogReportingClient#lowStock(int):
+      CatalogReportingClientlowStockint:
         baseConfig: default
-      CatalogReportingClient#exportProducts():
+      CatalogReportingClientexportProducts:
         baseConfig: default
   timelimiter:
     configs:
@@ -99,9 +123,13 @@ resilience4j:
         timeoutDuration: 8s
         cancelRunningFuture: true
     instances:
-      CatalogReportingClient#lowStock(int):
+      # Lecturas del panel: esperar 8 segundos para acabar pintando una
+      # lista vacía no tiene sentido; a los 3 se corta.
+      CatalogReportingClientlowStockint:
+        baseConfig: default
         timeoutDuration: 3s
-      CatalogReportingClient#exportProducts():
+      CatalogReportingClientexportProducts:
+        baseConfig: default
         timeoutDuration: 3s
 
 # Valores por defecto para cuando se arranca sin el perfil local (el perfil
@@ -129,15 +157,34 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        # Además de la sonda, los dos endpoints de resilience4j y las
+        # métricas. Son los que faltaban: el estado de los circuitos se
+        # registraba (health.circuitbreakers, más abajo) pero NO se podía
+        # consultar, porque solo se exponía "health" y además con
+        # show-details: never, que oculta todos los componentes. El
+        # /actuator/health devolvía {"status":"UP"} con el circuito abierto.
+        #
+        # Siguen fuera env, beans, mappings y configprops: esos revelan la
+        # configuración interna y no hacen falta para operar.
+        include: health,circuitbreakers,circuitbreakerevents,metrics
   endpoint:
     health:
-      show-details: never
+      # Anónimo ve solo el status —es lo que necesita el healthcheck de
+      # Docker, que no se autentica—; el staff con su JWT ve el detalle por
+      # componente. Con "never" no lo veía nadie y con "always" lo vería
+      # cualquiera desde el 8083, que docker-compose publica.
+      show-details: when-authorized
+      roles: ADMIN,SUPERADMIN
       probes:
         enabled: true
   health:
-    # Añade el estado de los circuitos a /actuator/health. Así se ve desde
-    # fuera si order-service está teniendo problemas para hablar con
-    # catalog, sin entrar a leer logs.
+    # Añade el estado de los circuitos a /actuator/health.
+    #
+    # Ojo con lo que NO hace: un circuito abierto no pone el servicio en
+    # DOWN (resilience4j deja allowHealthIndicatorToFail en false). Y es lo
+    # correcto: si catalog se cae, order-service debe seguir atendiendo
+    # —cobrar no depende de poder leer el catálogo entero—. Que un circuito
+    # abierto tumbara el healthcheck sacaría de servicio justo al que está
+    # aguantando la caída.
     circuitbreakers:
       enabled: true

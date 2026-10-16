@@ -20,6 +20,11 @@ jwt:
   expiration: ${JWT_EXPIRATION:86400000}
 
 spring:
+  # Config muerta: order-service NO envía correos y no tiene
+  # spring-boot-starter-mail en el pom, así que Spring ignora esto. Quien
+  # avisa al cliente es support-service, a partir de los eventos que este
+  # servicio publica en Kafka (ver decisión 15). Se deja porque el .env es
+  # común a todos los servicios.
   mail:
     host: ${SMTP_HOST:smtp.gmail.com}
     port: ${SMTP_PORT:587}
