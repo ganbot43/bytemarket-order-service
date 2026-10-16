@@ -6,7 +6,11 @@ import com.bytemarket.order.repository.IOrderRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import com.bytemarket.order.service.CartService;
+import com.bytemarket.order.service.PanelReportService;
+import java.time.format.DateTimeParseException;
 
 import java.time.Duration;
 import java.time.LocalDate;
@@ -28,6 +32,7 @@ public class ApiAdminReportController {
 
     private final IOrderRepository orderRepository;
     private final CatalogReportingClient catalogReportingClient;
+    private final PanelReportService panelReportService;
 
     /** Estados que siguen esperando algo de la tienda. */
     private static final List<String> ABIERTOS =
@@ -124,6 +129,58 @@ public class ApiAdminReportController {
             resp.put("products", List.of());
         }
         return resp;
+    }
+
+    // ─── Resumen de la portada ──────────────────────────────────
+
+    /**
+     * Lo que el panel muestra al abrirse: dinero cobrado y trabajo pendiente.
+     *
+     * Vive bajo /api/admin/reports/ y no en /api/admin/dashboard porque el
+     * gateway ya enruta /api/admin/reports/** a este servicio; una ruta
+     * nueva habría obligado a tocar el gateway para nada.
+     *
+     * El stock bajo se pide a catalog con su fallback: si el catálogo no
+     * responde, esa tarjeta sale en 0 y el resto del panel carga igual.
+     */
+    @GetMapping("/reports/dashboard")
+    public Map<String, Object> dashboard(@RequestParam(defaultValue = "10") int threshold) {
+        Map<String, Object> resp = new LinkedHashMap<>(panelReportService.resumen());
+        List<Map<String, Object>> bajo = lowStockSeguro(threshold);
+        resp.put("lowStockCount", bajo.size());
+        resp.put("lowStockThreshold", threshold);
+        resp.put("lowStock", bajo.stream().limit(5).toList());
+        return resp;
+    }
+
+    // ─── Reporte de ventas ──────────────────────────────────────
+
+    /**
+     * Ventas de un período comparadas con el anterior del mismo largo.
+     *
+     * Fechas en formato aaaa-mm-dd. Sin parámetros, los últimos 30 días.
+     */
+    @GetMapping("/reports/sales")
+    public ResponseEntity<?> sales(@RequestParam(required = false) String desde,
+                                   @RequestParam(required = false) String hasta,
+                                   @RequestParam(defaultValue = "10") int top) {
+        try {
+            return ResponseEntity.ok(panelReportService.ventas(
+                    fecha(desde, "desde"), fecha(hasta, "hasta"), Math.max(1, Math.min(50, top))));
+        } catch (CartService.CartException e) {
+            return ResponseEntity.badRequest().body(Map.of("statusCode", 400, "message", e.getMessage()));
+        }
+    }
+
+    /** Una fecha mal escrita es un 400 que dice cuál, no un 500. */
+    private static LocalDate fecha(String valor, String campo) {
+        if (valor == null || valor.isBlank()) return null;
+        try {
+            return LocalDate.parse(valor.trim());
+        } catch (DateTimeParseException e) {
+            throw new CartService.CartException(
+                    "La fecha '" + campo + "' no es válida: usa el formato aaaa-mm-dd");
+        }
     }
 
     /** Un catálogo caído no debe tumbar el panel entero. */

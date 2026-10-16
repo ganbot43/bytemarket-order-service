@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -52,44 +53,22 @@ public class CartService {
             throw new CartException("Tu carrito está vacío");
         }
 
-        List<Map<String, Object>> catalogo;
-        try {
-            catalogo = catalogPricingClient.resolve(new ArrayList<>(cantidades.keySet()));
-        } catch (Exception e) {
-            throw new CartException("No pudimos verificar los productos. Inténtalo en un momento.");
-        }
-
-        Map<Integer, Map<String, Object>> porId = new LinkedHashMap<>();
-        for (Map<String, Object> p : catalogo) {
-            porId.put(Integer.valueOf(p.get("id").toString()), p);
-        }
+        Map<Integer, Map<String, Object>> porId = consultarCatalogo(cantidades.keySet());
 
         List<OrderItem> items = new ArrayList<>();
         double subtotal = 0d;
 
         for (Map.Entry<Integer, Integer> e : cantidades.entrySet()) {
             Map<String, Object> p = porId.get(e.getKey());
-            if (p == null) {
-                throw new CartException("Un producto de tu carrito ya no está disponible");
-            }
-            if (!Boolean.TRUE.equals(p.get("isActive"))) {
-                throw new CartException("\"" + p.get("name") + "\" ya no está disponible");
-            }
-
             int qty = e.getValue();
-            if (Boolean.TRUE.equals(p.get("trackStock"))) {
-                int stock = p.get("stock") == null ? 0 : Integer.parseInt(p.get("stock").toString());
-                if (stock < qty) {
-                    throw new CartException("Solo quedan " + stock + " unidades de \"" + p.get("name") + "\"");
-                }
-            }
+            String nombre = validarVendible(p, qty);
 
             double precio = Double.parseDouble(p.get("price").toString());
             double lineaSubtotal = redondear(precio * qty);
 
             OrderItem item = new OrderItem();
             item.setProductId(e.getKey().longValue());
-            item.setProductName(String.valueOf(p.get("name")));
+            item.setProductName(nombre);
             item.setUnitPrice(precio);
             item.setQuantity(qty);
             item.setSubtotal(lineaSubtotal);
@@ -99,6 +78,62 @@ public class CartService {
         }
 
         return new PricedCart(items, redondear(subtotal));
+    }
+
+    /**
+     * Pregunta al catálogo por estos productos y los devuelve indexados.
+     *
+     * Está separado de price() porque hay DOS formas de valorar un carrito y
+     * las dos necesitan preguntar lo mismo:
+     *
+     *   · La tienda (price()) toma el precio del catálogo, porque el
+     *     navegador no puede decidir cuánto paga.
+     *   · La caja del panel (PanelSaleService) toma el precio que escribe
+     *     quien vende, porque en el mostrador se negocia: un cliente que
+     *     compra diez unidades, un producto con la caja abierta.
+     *
+     * Lo que NO cambia entre las dos es la comprobación de que el producto
+     * existe, está activo y tiene stock. Eso vive aquí para que no haya dos
+     * versiones que puedan divergir.
+     */
+    public Map<Integer, Map<String, Object>> consultarCatalogo(Collection<Integer> productIds) {
+        if (productIds == null || productIds.isEmpty()) return Map.of();
+
+        List<Map<String, Object>> catalogo;
+        try {
+            catalogo = catalogPricingClient.resolve(new ArrayList<>(productIds));
+        } catch (Exception e) {
+            throw new CartException("No pudimos verificar los productos. Inténtalo en un momento.");
+        }
+
+        Map<Integer, Map<String, Object>> porId = new LinkedHashMap<>();
+        for (Map<String, Object> p : catalogo) {
+            porId.put(Integer.valueOf(p.get("id").toString()), p);
+        }
+        return porId;
+    }
+
+    /**
+     * Comprueba que el producto se puede vender, y en qué cantidad.
+     *
+     * Devuelve el nombre con el que se guarda la línea: el del catálogo, no
+     * el que mande el cliente. Un pedido tiene que decir qué se vendió de
+     * verdad, aunque el producto se renombre después.
+     */
+    public String validarVendible(Map<String, Object> p, int cantidad) {
+        if (p == null) {
+            throw new CartException("Un producto de tu carrito ya no está disponible");
+        }
+        if (!Boolean.TRUE.equals(p.get("isActive"))) {
+            throw new CartException("\"" + p.get("name") + "\" ya no está disponible");
+        }
+        if (Boolean.TRUE.equals(p.get("trackStock"))) {
+            int stock = p.get("stock") == null ? 0 : Integer.parseInt(p.get("stock").toString());
+            if (stock < cantidad) {
+                throw new CartException("Solo quedan " + stock + " unidades de \"" + p.get("name") + "\"");
+            }
+        }
+        return String.valueOf(p.get("name"));
     }
 
     /** Descuento del cupón, o 0 si no se envió ninguno. */
