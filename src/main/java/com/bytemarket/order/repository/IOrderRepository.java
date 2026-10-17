@@ -107,9 +107,21 @@ public interface IOrderRepository extends JpaRepository<Order, Integer> {
     // cancelado). Una gráfica que no cuadra con la cifra de arriba no sirve
     // para decidir nada.
 
-    /** Ventas y pedidos por día del rango, para la gráfica del reporte. */
+    /**
+     * Ventas y pedidos por día del rango, para la gráfica del reporte.
+     *
+     * El día se calcula en hora de Lima, no en la del servidor. created_at
+     * está en UTC, así que agrupando por DATE(created_at) a secas todo lo
+     * vendido a partir de las 19:00 caía en el día siguiente del gráfico.
+     *
+     * CONVERT_TZ con el desfase numérico y no con 'America/Lima': el
+     * nombre exige que MySQL tenga cargadas las tablas de zonas horarias,
+     * que la imagen de Docker trae vacías. Perú no tiene horario de verano
+     * desde 1994, así que -05:00 vale todo el año. El mismo corte que
+     * HoraDeLima aplica a los bordes del rango.
+     */
     @Query(value = """
-            SELECT DATE(o.created_at)        AS day,
+            SELECT DATE(CONVERT_TZ(o.created_at, '+00:00', '-05:00')) AS day,
                    COALESCE(SUM(o.total), 0) AS amount,
                    COUNT(*)                  AS orders
             FROM orders o
@@ -118,8 +130,8 @@ public interface IOrderRepository extends JpaRepository<Order, Integer> {
               AND COALESCE(NULLIF(o.payment_status, ''),
                            CASE WHEN o.status IN ('payment_validated','in_preparation','delivered')
                                 THEN 'paid' ELSE 'pending' END) = 'paid'
-            GROUP BY DATE(o.created_at)
-            ORDER BY DATE(o.created_at) ASC
+            GROUP BY DATE(CONVERT_TZ(o.created_at, '+00:00', '-05:00'))
+            ORDER BY DATE(CONVERT_TZ(o.created_at, '+00:00', '-05:00')) ASC
             """, nativeQuery = true)
     List<Map<String, Object>> ventasPorDiaEntre(@Param("desde") LocalDateTime desde,
                                                 @Param("hasta") LocalDateTime hasta);

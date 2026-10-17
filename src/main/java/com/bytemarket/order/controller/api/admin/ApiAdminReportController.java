@@ -9,6 +9,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import com.bytemarket.order.service.CartService;
+import com.bytemarket.order.service.HoraDeLima;
 import com.bytemarket.order.service.PanelReportService;
 import java.time.format.DateTimeParseException;
 
@@ -42,8 +43,9 @@ public class ApiAdminReportController {
 
     @GetMapping("/automation/reports")
     public Map<String, Object> reports(@RequestParam(required = false) Integer threshold) {
-        LocalDateTime hoy = LocalDate.now().atStartOfDay();
-        LocalDateTime semana = hoy.minusDays(7);
+        // Días de Lima, no del contenedor. Ver HoraDeLima.
+        LocalDateTime hoy = HoraDeLima.inicioDe(HoraDeLima.hoy());
+        LocalDateTime semana = HoraDeLima.inicioDe(HoraDeLima.hoy().minusDays(6));
 
         Map<String, Object> totals = new LinkedHashMap<>();
         totals.put("todaySales", orderRepository.sumarDesde(hoy));
@@ -86,7 +88,7 @@ public class ApiAdminReportController {
     @GetMapping("/automation/follow-ups")
     public Map<String, Object> followUps(@RequestParam(defaultValue = "24") long hours) {
         List<Map<String, Object>> data = new ArrayList<>();
-        LocalDateTime ahora = LocalDateTime.now();
+        LocalDateTime ahora = HoraDeLima.ahora();
 
         for (Order o : orderRepository.findByStatusInOrderByCreatedAtAsc(ABIERTOS)) {
             if (o.getCreatedAt() == null) continue;
@@ -129,8 +131,9 @@ public class ApiAdminReportController {
     @GetMapping("/reports/sales-chart")
     public List<Map<String, Object>> salesChart(@RequestParam(defaultValue = "30") int days) {
         int rango = Math.max(1, Math.min(365, days));
-        LocalDateTime desde = LocalDate.now().minusDays(rango - 1L).atStartOfDay();
-        LocalDateTime hasta = LocalDate.now().plusDays(1).atStartOfDay();
+        LocalDate finLima = HoraDeLima.hoy();
+        LocalDateTime desde = HoraDeLima.inicioDe(finLima.minusDays(rango - 1L));
+        LocalDateTime hasta = HoraDeLima.finDe(finLima);
 
         List<Map<String, Object>> puntos = new ArrayList<>();
         for (Map<String, Object> fila : orderRepository.ventasPorDiaEntre(desde, hasta)) {

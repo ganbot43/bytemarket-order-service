@@ -119,7 +119,10 @@ public class OrderService {
     }
 
     private String generarCodigo() {
-        String dia = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        // El día del código es el de Lima: una venta de las 20:00 salía con
+        // el código de mañana, y el comprobante que se imprime lleva ese
+        // código. Ver HoraDeLima.
+        String dia = HoraDeLima.hoy().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         for (int intento = 0; intento < 20; intento++) {
             String codigo = "BM-" + dia + "-" + ThreadLocalRandom.current().nextInt(1000, 10000);
             if (orderRepository.findByOrderCode(codigo).isEmpty()) return codigo;

@@ -54,10 +54,12 @@ public class PanelReportService {
     // ─── Resumen de la portada ──────────────────────────────────
 
     public Map<String, Object> resumen() {
-        LocalDate hoy = LocalDate.now();
-        LocalDateTime inicioMes = hoy.withDayOfMonth(1).atStartOfDay();
-        LocalDateTime inicioDia = hoy.atStartOfDay();
-        LocalDateTime ahora = LocalDateTime.now();
+        // El día y el mes son los de Lima; los bordes se traducen a UTC,
+        // que es como están guardadas las fechas. Ver HoraDeLima.
+        LocalDate hoy = HoraDeLima.hoy();
+        LocalDateTime inicioMes = HoraDeLima.inicioDe(hoy.withDayOfMonth(1));
+        LocalDateTime inicioDia = HoraDeLima.inicioDe(hoy);
+        LocalDateTime ahora = HoraDeLima.ahora();
 
         Map<String, Object> mes = orderRepository.cobradoEntre(inicioMes, ahora);
         Map<String, Object> dia = orderRepository.cobradoEntre(inicioDia, ahora);
@@ -84,7 +86,7 @@ public class PanelReportService {
      * @param hasta último día incluido; si falta, hoy
      */
     public Map<String, Object> ventas(LocalDate desde, LocalDate hasta, int tope) {
-        LocalDate fin = hasta == null ? LocalDate.now() : hasta;
+        LocalDate fin = hasta == null ? HoraDeLima.hoy() : hasta;
         LocalDate ini = desde == null ? fin.minusDays(29) : desde;
         if (ini.isAfter(fin)) {
             throw new CartService.CartException("La fecha inicial debe ser anterior a la final");
@@ -103,8 +105,8 @@ public class PanelReportService {
         Map<String, Object> previo = totales(previoIni, previoFin);
         Map<String, Object> pendiente = orderRepository.porCobrar();
 
-        LocalDateTime a = ini.atStartOfDay();
-        LocalDateTime b = fin.plusDays(1).atStartOfDay();
+        LocalDateTime a = HoraDeLima.inicioDe(ini);
+        LocalDateTime b = HoraDeLima.finDe(fin);
 
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("from", ini.toString());
@@ -126,8 +128,8 @@ public class PanelReportService {
     }
 
     private Map<String, Object> totales(LocalDate ini, LocalDate fin) {
-        LocalDateTime a = ini.atStartOfDay();
-        LocalDateTime b = fin.plusDays(1).atStartOfDay();
+        LocalDateTime a = HoraDeLima.inicioDe(ini);
+        LocalDateTime b = HoraDeLima.finDe(fin);
 
         Map<String, Object> cobrado = orderRepository.cobradoEntre(a, b);
         double amount = decimal(cobrado.get("amount"));
@@ -161,7 +163,7 @@ public class PanelReportService {
             porDia.put(d.toString(), vacio);
         }
         for (Map<String, Object> fila : orderRepository.ventasPorDiaEntre(
-                ini.atStartOfDay(), fin.plusDays(1).atStartOfDay())) {
+                HoraDeLima.inicioDe(ini), HoraDeLima.finDe(fin))) {
             String clave = String.valueOf(fila.get("day"));
             Map<String, Object> dia = porDia.get(clave);
             if (dia == null) continue;
