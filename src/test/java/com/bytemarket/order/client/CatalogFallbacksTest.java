@@ -43,7 +43,15 @@ class CatalogFallbacksTest {
     void informesDevuelveVacio() {
         CatalogReportingClient fallback = new CatalogReportingClientFallback();
 
-        assertEquals(List.of(), fallback.lowStock(10));
+        // lowStock devuelve {data, threshold}, no la lista pelada: el umbral
+        // lo pone catalog y el panel necesita saber cuál aplicó. Caído el
+        // catálogo no hay umbral que dar, así que va la lista vacía y nada
+        // más, y el panel lo trata como desconocido en vez de inventarse un
+        // número.
+        Map<String, Object> informe = fallback.lowStock(null);
+        assertEquals(List.of(), informe.get("data"));
+        assertNull(informe.get("threshold"), "sin catálogo no hay umbral que afirmar");
+
         assertEquals(List.of(), fallback.exportProducts());
     }
 }
