@@ -62,18 +62,6 @@ public interface IOrderRepository extends JpaRepository<Order, Integer> {
     @Query("SELECT COALESCE(SUM(o.total), 0) FROM Order o WHERE o.createdAt >= :desde AND o.status <> 'cancelled'")
     double sumarDesde(@Param("desde") LocalDateTime desde);
 
-    /** Ventas por día para la gráfica del panel. Los cancelados no cuentan. */
-    @Query(value = """
-            SELECT DATE(o.created_at)        AS date,
-                   COALESCE(SUM(o.total), 0) AS totalSales
-            FROM orders o
-            WHERE o.status <> 'cancelled'
-              AND o.created_at >= :desde
-            GROUP BY DATE(o.created_at)
-            ORDER BY DATE(o.created_at) ASC
-            """, nativeQuery = true)
-    List<Map<String, Object>> ventasPorDia(@Param("desde") LocalDateTime desde);
-
     // ─── Indicadores del panel ──────────────────────────────────
     //
     // OJO: estas consultas repiten en SQL la regla de Order.estadoDePago().

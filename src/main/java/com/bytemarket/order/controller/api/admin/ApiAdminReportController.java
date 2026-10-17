@@ -41,7 +41,7 @@ public class ApiAdminReportController {
     // ─── Resumen del panel ──────────────────────────────────────
 
     @GetMapping("/automation/reports")
-    public Map<String, Object> reports(@RequestParam(defaultValue = "10") int threshold) {
+    public Map<String, Object> reports(@RequestParam(required = false) Integer threshold) {
         LocalDateTime hoy = LocalDate.now().atStartOfDay();
         LocalDateTime semana = hoy.minusDays(7);
 
@@ -53,7 +53,7 @@ public class ApiAdminReportController {
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("totals", totals);
         resp.put("topProducts", orderRepository.productosMasVendidos(PageRequest.of(0, 5)));
-        resp.put("lowStock", lowStockSeguro(threshold));
+        resp.put("lowStock", bajoStock(lowStockSeguro(threshold)));
         return resp;
     }
 
@@ -65,15 +65,18 @@ public class ApiAdminReportController {
      * igual: la pantalla sigue siendo útil.
      */
     @GetMapping("/automation/stock-alerts")
-    public Map<String, Object> stockAlerts(@RequestParam(defaultValue = "10") int threshold,
+    public Map<String, Object> stockAlerts(@RequestParam(required = false) Integer threshold,
                                            @RequestParam(required = false) Integer notify) {
-        List<Map<String, Object>> data = lowStockSeguro(threshold);
+        Map<String, Object> catalogo = lowStockSeguro(threshold);
+        List<Map<String, Object>> data = bajoStock(catalogo);
         if (notify != null && notify == 1) {
-            log.info("Alerta de stock solicitada: {} productos bajo el umbral {}", data.size(), threshold);
+            log.info("Alerta de stock solicitada: {} productos bajo el umbral {}",
+                    data.size(), catalogo.get("threshold"));
         }
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("data", data);
-        resp.put("threshold", threshold);
+        // El umbral lo pone catalog; aquí solo se reenvía el que aplicó.
+        resp.put("threshold", catalogo.get("threshold"));
         resp.put("notified", notify != null && notify == 1);
         return resp;
     }
@@ -110,9 +113,34 @@ public class ApiAdminReportController {
 
     // ─── Gráfica de ventas ──────────────────────────────────────
 
+    /**
+     * Ventas por día para la gráfica de la portada.
+     *
+     * Reusa ventasPorDiaEntre, la misma consulta del reporte de ventas, en
+     * vez de tener la suya: la regla de "cobrado" es ese COALESCE largo
+     * sobre payment_status, y cada copia que exista es una copia que se
+     * puede quedar atrás. Esta tenía la suya y se quedó: sumaba todo lo no
+     * cancelado, así que la gráfica decía 3964 el día que la tarjeta de
+     * arriba decía 2022. Una gráfica que no cuadra con la cifra de al lado
+     * no se puede usar para decidir nada.
+     *
+     * El rango incluye hoy: `days` días contando hacia atrás desde hoy.
+     */
     @GetMapping("/reports/sales-chart")
     public List<Map<String, Object>> salesChart(@RequestParam(defaultValue = "30") int days) {
-        return orderRepository.ventasPorDia(LocalDate.now().minusDays(days).atStartOfDay());
+        int rango = Math.max(1, Math.min(365, days));
+        LocalDateTime desde = LocalDate.now().minusDays(rango - 1L).atStartOfDay();
+        LocalDateTime hasta = LocalDate.now().plusDays(1).atStartOfDay();
+
+        List<Map<String, Object>> puntos = new ArrayList<>();
+        for (Map<String, Object> fila : orderRepository.ventasPorDiaEntre(desde, hasta)) {
+            Map<String, Object> punto = new LinkedHashMap<>();
+            punto.put("date", String.valueOf(fila.get("day")));
+            punto.put("totalSales", fila.get("amount"));
+            punto.put("orders", fila.get("orders"));
+            puntos.add(punto);
+        }
+        return puntos;
     }
 
     // ─── Exportación (Excel / PDF los arma el navegador) ────────
@@ -144,11 +172,12 @@ public class ApiAdminReportController {
      * responde, esa tarjeta sale en 0 y el resto del panel carga igual.
      */
     @GetMapping("/reports/dashboard")
-    public Map<String, Object> dashboard(@RequestParam(defaultValue = "10") int threshold) {
+    public Map<String, Object> dashboard(@RequestParam(required = false) Integer threshold) {
         Map<String, Object> resp = new LinkedHashMap<>(panelReportService.resumen());
-        List<Map<String, Object>> bajo = lowStockSeguro(threshold);
+        Map<String, Object> catalogo = lowStockSeguro(threshold);
+        List<Map<String, Object>> bajo = bajoStock(catalogo);
         resp.put("lowStockCount", bajo.size());
-        resp.put("lowStockThreshold", threshold);
+        resp.put("lowStockThreshold", catalogo.get("threshold"));
         resp.put("lowStock", bajo.stream().limit(5).toList());
         return resp;
     }
@@ -184,12 +213,28 @@ public class ApiAdminReportController {
     }
 
     /** Un catálogo caído no debe tumbar el panel entero. */
-    private List<Map<String, Object>> lowStockSeguro(int threshold) {
+    /**
+     * Stock bajo del catálogo: la lista y el umbral que catalog aplicó.
+     *
+     * `threshold` normalmente llega null —el panel ya no manda ninguno— y
+     * entonces decide catalog, que es quien tiene los productos. Se deja
+     * aceptar uno explícito para poder consultar otro corte sin tocar la
+     * regla.
+     */
+    private Map<String, Object> lowStockSeguro(Integer threshold) {
         try {
-            return catalogReportingClient.lowStock(threshold);
+            Map<String, Object> resp = catalogReportingClient.lowStock(threshold);
+            return resp == null ? Map.of() : resp;
         } catch (Exception e) {
             log.error("No se pudo leer el stock bajo del catálogo: {}", e.getMessage());
-            return List.of();
+            return Map.of();
         }
+    }
+
+    /** La lista de productos de esa respuesta, vacía si el catálogo no contestó. */
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> bajoStock(Map<String, Object> respuesta) {
+        Object data = respuesta.get("data");
+        return data instanceof List<?> lista ? (List<Map<String, Object>>) lista : List.of();
     }
 }

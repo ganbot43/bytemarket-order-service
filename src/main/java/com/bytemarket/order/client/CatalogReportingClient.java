@@ -22,8 +22,15 @@ import java.util.Map;
         fallback = CatalogReportingClientFallback.class)
 public interface CatalogReportingClient {
 
+    /**
+     * Stock bajo del catálogo. El umbral va como Integer y no como int
+     * porque null significa "aplica el tuyo": la regla de cuándo un stock
+     * es bajo es de catalog, que es quien tiene los productos, y duplicarla
+     * aquí dejaba al dashboard contando con un número distinto del de la
+     * pantalla de Inventario.
+     */
     @GetMapping("/low-stock")
-    List<Map<String, Object>> lowStock(@RequestParam("threshold") int threshold);
+    Map<String, Object> lowStock(@RequestParam(name = "threshold", required = false) Integer threshold);
 
     @GetMapping("/export")
     List<Map<String, Object>> exportProducts();

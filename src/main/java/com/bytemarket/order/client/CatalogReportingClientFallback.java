@@ -19,9 +19,11 @@ public class CatalogReportingClientFallback implements CatalogReportingClient {
     private static final Logger log = LoggerFactory.getLogger(CatalogReportingClientFallback.class);
 
     @Override
-    public List<Map<String, Object>> lowStock(int threshold) {
+    public Map<String, Object> lowStock(Integer threshold) {
         log.warn("catalog-service no responde: el stock bajo se muestra vacío");
-        return List.of();
+        // Sin umbral: el número lo pone catalog, y catalog es justo lo que
+        // no contestó. El panel lo trata como desconocido y no lo escribe.
+        return Map.of("data", List.of());
     }
 
     @Override
