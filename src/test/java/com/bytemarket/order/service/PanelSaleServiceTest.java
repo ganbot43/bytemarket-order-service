@@ -2,6 +2,7 @@ package com.bytemarket.order.service;
 
 import com.bytemarket.order.messaging.PedidoEventPublisher;
 import com.bytemarket.order.messaging.StockPublisher;
+import com.bytemarket.order.model.CashSession;
 import com.bytemarket.order.model.Order;
 import com.bytemarket.order.model.OrderItem;
 import com.bytemarket.order.repository.IOrderRepository;
@@ -35,6 +36,7 @@ class PanelSaleServiceTest {
     private IOrderStatusLogRepository statusLogRepository;
     private IPaymentMethodRepository paymentMethodRepository;
     private CartService cartService;
+    private CashSessionService cashSessionService;
     private StockPublisher stockPublisher;
     private PedidoEventPublisher pedidoEventPublisher;
     private PanelSaleService service;
@@ -48,8 +50,16 @@ class PanelSaleServiceTest {
         stockPublisher = mock(StockPublisher.class);
         pedidoEventPublisher = mock(PedidoEventPublisher.class);
 
+        cashSessionService = mock(CashSessionService.class);
+        // Las ventas de caja exigen turno abierto; aquí se da por abierto
+        // para poder probar el resto. Que lo exija tiene su propia prueba
+        // en CashSessionServiceTest.
+        CashSession turno = new CashSession();
+        turno.setId(1);
+        when(cashSessionService.exigirAbierta(any())).thenReturn(turno);
+
         service = new PanelSaleService(orderRepository, statusLogRepository, paymentMethodRepository,
-                cartService, stockPublisher, pedidoEventPublisher);
+                cartService, cashSessionService, stockPublisher, pedidoEventPublisher);
 
         when(orderRepository.findByOrderCode(anyString())).thenReturn(Optional.empty());
         when(orderRepository.save(any(Order.class))).thenAnswer(i -> {

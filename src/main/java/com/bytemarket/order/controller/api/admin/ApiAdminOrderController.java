@@ -4,6 +4,7 @@ import com.bytemarket.order.model.Order;
 import com.bytemarket.order.repository.IOrderRepository;
 import com.bytemarket.order.security.CurrentUser;
 import com.bytemarket.order.service.CartService;
+import com.bytemarket.order.service.CashSessionService;
 import com.bytemarket.order.service.OrderService;
 import com.bytemarket.order.service.PanelSaleService;
 import lombok.RequiredArgsConstructor;
@@ -121,6 +122,14 @@ public class ApiAdminOrderController {
             resp.put("customerPhone", o.getCustomerPhone());
             resp.put("createdAt", o.getCreatedAt());
             return ResponseEntity.status(HttpStatus.CREATED).body(resp);
+        } catch (CashSessionService.CajaException e) {
+            /*
+             * 409 y no 400: la petición está bien formada, lo que falta es
+             * un turno de caja abierto. Y el mensaje tiene que llegar tal
+             * cual —dice exactamente qué hacer— en vez del "error interno"
+             * genérico que salía al dejarla subir sin traducir.
+             */
+            return error(HttpStatus.CONFLICT, e.getMessage());
         } catch (CartService.CartException e) {
             return error(HttpStatus.BAD_REQUEST, e.getMessage());
         }

@@ -2,6 +2,7 @@ package com.bytemarket.order.service;
 
 import com.bytemarket.order.messaging.PedidoEventPublisher;
 import com.bytemarket.order.messaging.StockPublisher;
+import com.bytemarket.order.model.CashSession;
 import com.bytemarket.order.model.Order;
 import com.bytemarket.order.model.OrderItem;
 import com.bytemarket.order.model.OrderStatusLog;
@@ -70,6 +71,9 @@ public class PanelSaleService {
             "tarjeta", "Tarjeta",
             "bank_transfer", "Transferencia bancaria");
 
+    /** El canal que de verdad pasa por el cajón. */
+    private static final String ES_CAJA = "caja";
+
     /** Nombre con el que se guarda una venta de mostrador sin cliente. */
     private static final String CLIENTE_MOSTRADOR = "Cliente de mostrador";
 
@@ -77,6 +81,7 @@ public class PanelSaleService {
     private final IOrderStatusLogRepository statusLogRepository;
     private final IPaymentMethodRepository paymentMethodRepository;
     private final CartService cartService;
+    private final CashSessionService cashSessionService;
     private final StockPublisher stockPublisher;
     private final PedidoEventPublisher pedidoEventPublisher;
 
@@ -127,10 +132,25 @@ public class PanelSaleService {
         double descuento = redondear(Math.min(aMano + cupon.discount(), subtotal));
         double total = redondear(subtotal - descuento);
 
+        /*
+         * Una venta de mostrador pertenece a un turno de caja, y si no hay
+         * turno abierto no se vende.
+         *
+         * No es burocracia: una venta que no está en ningún turno no
+         * aparece en ningún arqueo, y con una sola así el cuadre del día
+         * deja de significar nada —el cajón tendría dinero que el sistema
+         * no sabe explicar—.
+         *
+         * Solo la caja. Los pedidos a mano por WhatsApp o teléfono no pasan
+         * por el cajón: se cobran después, por Yape o transferencia.
+         */
+        CashSession caja = ES_CAJA.equals(canal) ? cashSessionService.exigirAbierta(adminUserId) : null;
+
         Order order = new Order();
         order.setOrderCode(generarCodigo());
         order.setUserId(null);
         order.setCreatedBy(adminUserId);
+        order.setCashSessionId(caja == null ? null : caja.getId());
         order.setChannel(canal);
         order.setCustomerName(nombre == null ? CLIENTE_MOSTRADOR : nombre);
         order.setCustomerPhone(texto(p.customerPhone()));

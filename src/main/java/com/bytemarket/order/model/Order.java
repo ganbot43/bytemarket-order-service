@@ -135,6 +135,17 @@ public class Order {
     @Column(name = "payment_status", length = 20)
     private String paymentStatus;
 
+    /**
+     * El turno de caja al que pertenece esta venta.
+     *
+     * Solo lo llevan las de mostrador: es lo que permite preguntar "¿qué se
+     * cobró en efectivo en este turno?" al cuadrar. Null en los pedidos web
+     * —esos no pasan por el cajón— y en los de mostrador anteriores a que
+     * existieran los turnos.
+     */
+    @Column(name = "cash_session_id")
+    private Integer cashSessionId;
+
     /** Qué usuario del panel registró la venta. Null si la hizo el cliente. */
     @Column(name = "created_by")
     private Long createdBy;
