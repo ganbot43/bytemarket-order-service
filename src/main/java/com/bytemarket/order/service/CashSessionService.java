@@ -59,8 +59,12 @@ public class CashSessionService {
      * venta que no pertenece a ningún turno no aparece en ningún arqueo, y
      * con una sola así el cuadre deja de significar nada.
      */
+    @Transactional
     public CashSession exigirAbierta(Long userId) {
-        CashSession s = abiertaDe(userId);
+        // Bloquea la fila: cobrar y cerrar no pueden solaparse, o una venta
+        // acabaría dentro de un turno cuyo arqueo ya se calculó sin ella.
+        CashSession s = userId == null ? null
+                : sessionRepository.bloquearAbierta(userId, CashSession.ABIERTA).orElse(null);
         if (s == null) {
             throw new CajaException(
                     "No tienes una caja abierta. Ábrela con el fondo inicial antes de cobrar.");
@@ -122,6 +126,9 @@ public class CashSessionService {
      */
     @Transactional
     public CashSession cerrar(Long userId, double contado, String notas) {
+        // exigirAbierta bloquea la fila, así que desde aquí hasta el commit
+        // ninguna venta puede sumarse a este turno: lo que se cuente en el
+        // esperado es exactamente lo que acabará dentro.
         CashSession s = exigirAbierta(userId);
         if (contado < 0) throw new CajaException("Lo contado no puede ser negativo");
 

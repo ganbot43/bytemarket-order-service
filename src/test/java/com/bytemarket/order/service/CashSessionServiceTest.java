@@ -55,6 +55,9 @@ class CashSessionServiceTest {
         s.setStatus(CashSession.ABIERTA);
         when(sessionRepository.findFirstByOpenedByAndStatus(CAJERO, CashSession.ABIERTA))
                 .thenReturn(Optional.of(s));
+        // exigirAbierta pasa por el finder con bloqueo, no por el de lectura.
+        when(sessionRepository.bloquearAbierta(CAJERO, CashSession.ABIERTA))
+                .thenReturn(Optional.of(s));
         return s;
     }
 
@@ -68,7 +71,7 @@ class CashSessionServiceTest {
     @Test
     @DisplayName("no se puede vender sin caja abierta")
     void sinCajaNoSeVende() {
-        when(sessionRepository.findFirstByOpenedByAndStatus(CAJERO, CashSession.ABIERTA))
+        when(sessionRepository.bloquearAbierta(CAJERO, CashSession.ABIERTA))
                 .thenReturn(Optional.empty());
 
         CashSessionService.CajaException e = assertThrows(
