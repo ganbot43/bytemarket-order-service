@@ -181,10 +181,34 @@ public class Order {
         };
     }
 
-    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    /*
+     * LAZY con @BatchSize, y las dos cosas hacen falta.
+     *
+     * Estaban en EAGER: listar diez pedidos lanzaba una consulta para los
+     * pedidos, diez para los items y diez para los historiales. Veintiuna
+     * para pintar una tabla de diez filas.
+     *
+     * LAZY a secas no lo arregla. `open-in-view` está activo —es el valor
+     * por defecto de Spring Boot— así que la sesión sigue abierta mientras
+     * Jackson serializa, y al recorrer las colecciones las cargaría una por
+     * una igual: las mismas veintiuna consultas, solo que más tarde.
+     *
+     * Lo que las junta es @BatchSize: Hibernate carga las colecciones de
+     * los diez pedidos de golpe, con un IN (...), y quedan tres consultas
+     * en total. El 25 cubre con holgura la página de diez del panel y los
+     * veinte del historial de un producto.
+     *
+     * Si alguien devuelve estas colecciones FUERA de la petición —en un
+     * @Async, o tras cerrar la sesión a mano— volverá el
+     * LazyInitializationException; ahí hay que traerlas con JOIN FETCH, no
+     * volver a EAGER.
+     */
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @org.hibernate.annotations.BatchSize(size = 25)
     private java.util.List<OrderItem> items;
 
-    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @org.hibernate.annotations.BatchSize(size = 25)
     @OrderBy("createdAt DESC")
     private java.util.List<OrderStatusLog> statusLogs;
 }
