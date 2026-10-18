@@ -96,7 +96,22 @@ class OrderServiceTest {
     }
 
     @Test
-    @DisplayName("cancelar devuelve el stock al catálogo")
+    @DisplayName("un pedido entregado no se puede cancelar")
+    void entregadoNoSeCancela() {
+        CartService.CartException e = assertThrows(CartService.CartException.class,
+                () -> orderService.changeStatus(pedido("delivered"), "cancelled", "me equivoqué", 5L));
+
+        assertTrue(e.getMessage().contains("entregado"), "el mensaje debe decir por qué");
+
+        // Lo que de verdad importa: ni se guarda el cambio ni se devuelve
+        // stock que ya salió por la puerta.
+        verify(orderRepository, never()).save(any());
+        verify(stockPublisher, never()).publicarEntrada(any(), any(), any());
+        verify(pedidoEventPublisher, never()).publicarCambioDeEstado(any(), any());
+    }
+
+    @Test
+    @DisplayName("cancelar un pedido no entregado sí devuelve el stock")
     void cancelarDevuelveStock() {
         orderService.changeStatus(pedido("payment_validated"), "cancelled", "Cliente desistió", 5L);
 

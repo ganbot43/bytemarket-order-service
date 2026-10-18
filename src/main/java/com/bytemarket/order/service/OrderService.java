@@ -166,6 +166,31 @@ public class OrderService {
         String anterior = order.getStatus();
         if (nuevoEstado.equals(anterior)) return order;
 
+        /*
+         * Un pedido entregado no se cancela.
+         *
+         * No es una regla de formulario: cancelar publica una ENTRADA de
+         * stock, y entregado significa que las unidades ya salieron por la
+         * puerta. Cancelarlo las devolvería al inventario sin que nadie las
+         * haya traído, y a partir de ahí la existencia del sistema deja de
+         * ser la del almacén.
+         *
+         * Y aunque no tocara el stock, seguiría estando mal: el histórico
+         * diría que un pedido que el cliente ya tiene en casa nunca
+         * ocurrió. Lo que se hace con una entrega que vuelve es registrar
+         * la devolución —un movimiento de entrada, con su motivo—, no
+         * borrar la venta.
+         *
+         * Se comprueba aquí, en el servicio, y no en el panel: el panel es
+         * una de las formas de llegar, y la API admin está abierta a
+         * cualquiera con un token de administrador.
+         */
+        if ("cancelled".equals(nuevoEstado) && "delivered".equals(anterior)) {
+            throw new CartService.CartException(
+                    "Un pedido entregado no se puede cancelar. Si la mercadería volvió, "
+                            + "regístralo como una entrada en Inventario para dejar rastro de la devolución.");
+        }
+
         order.setStatus(nuevoEstado);
         order.setUpdatedAt(LocalDateTime.now());
         Order guardado = orderRepository.save(order);
