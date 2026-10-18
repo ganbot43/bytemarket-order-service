@@ -1,5 +1,8 @@
 package com.bytemarket.order.service;
 
+import com.bytemarket.order.client.CatalogInventoryClient;
+import com.bytemarket.order.client.CatalogNoDisponibleException;
+import feign.FeignException;
 import com.bytemarket.order.messaging.PedidoEventPublisher;
 import com.bytemarket.order.messaging.StockPublisher;
 import com.bytemarket.order.dto.CartItemDTO;
@@ -29,6 +32,7 @@ public class OrderService {
     private final IPaymentMethodRepository paymentMethodRepository;
     private final CartService cartService;
     private final StockPublisher stockPublisher;
+    private final CatalogInventoryClient catalogInventoryClient;
     private final PedidoEventPublisher pedidoEventPublisher;
 
     /** Estados por los que puede pasar un pedido, en orden de avance. */
@@ -80,8 +84,31 @@ public class OrderService {
         }
         order.setItems(carrito.items());
 
-        Order guardado = orderRepository.save(order);
-        registrarLog(guardado, "pending", userId, "Pedido recibido");
+        /*
+         * Apartar ANTES de guardar, no después.
+         *
+         * La validación del carrito miró el stock hace un instante, pero
+         * mirar no es coger: entre esa mirada y este punto cabe otra compra
+         * del mismo producto. Reservar sí es coger —la comprobación y el
+         * apartado son la misma operación en catalog—, así que si vuelve
+         * sin unidades, aquí se corta y el pedido no llega a existir.
+         *
+         * Al revés sería tarde: un pedido guardado con unidades que no hay
+         * es una promesa que alguien tendrá que deshacer a mano.
+         */
+        reservarStock(order);
+
+        Order guardado;
+        try {
+            guardado = orderRepository.save(order);
+            registrarLog(guardado, "pending", userId, "Pedido recibido");
+        } catch (RuntimeException e) {
+            // Las unidades ya están apartadas y el pedido no existe: se
+            // devuelven ahora en vez de esperar a que caduquen, para que el
+            // producto no figure agotado por algo que ya se sabe fallido.
+            liberarStock(order.getOrderCode());
+            throw e;
+        }
 
         descontarStock(guardado);
         // Después de guardar y de encolar el stock: solo se anuncia lo que ya
@@ -102,6 +129,53 @@ public class OrderService {
      */
     private void descontarStock(Order order) {
         stockPublisher.publicarSalida(order.getId().longValue(), order.getOrderCode(), itemsPayload(order));
+    }
+
+    /**
+     * Aparta las unidades del carrito a nombre de este pedido.
+     *
+     * El código del pedido ya existe aquí —se genera antes de guardar—, que
+     * es lo que permite reservar antes de tener id.
+     */
+    private void reservarStock(Order order) {
+        Map<String, Object> cuerpo = new HashMap<>();
+        cuerpo.put("orderCode", order.getOrderCode());
+        cuerpo.put("items", itemsPayload(order));
+        try {
+            catalogInventoryClient.reserveStock(cuerpo);
+        } catch (CatalogNoDisponibleException e) {
+            throw new CartService.CartException(e.getMessage());
+        } catch (FeignException.Conflict e) {
+            // 409: catalog dice que no alcanza, y su mensaje nombra el
+            // producto y las unidades que quedaban. Es mejor que cualquier
+            // cosa que pudiéramos escribir aquí.
+            throw new CartService.CartException(mensajeDe(e, "Uno de los productos se agotó mientras comprabas"));
+        }
+    }
+
+    private void liberarStock(String orderCode) {
+        try {
+            catalogInventoryClient.releaseStock(Map.of("orderCode", orderCode));
+        } catch (Exception e) {
+            // No se insiste: las reservas caducan solas. Peor sería tapar el
+            // error original del pedido con este.
+            log.warn("Pedido {}: no se pudieron devolver las unidades apartadas: {}. "
+                    + "Caducarán solas.", orderCode, e.getMessage());
+        }
+    }
+
+    /** El `message` que mande catalog, si viene; si no, uno genérico. */
+    private static String mensajeDe(FeignException e, String porDefecto) {
+        try {
+            String cuerpo = e.contentUTF8();
+            int i = cuerpo.indexOf("\"message\"");
+            if (i < 0) return porDefecto;
+            int ini = cuerpo.indexOf('"', cuerpo.indexOf(':', i)) + 1;
+            int fin = cuerpo.indexOf('"', ini);
+            return (ini > 0 && fin > ini) ? cuerpo.substring(ini, fin) : porDefecto;
+        } catch (Exception ignored) {
+            return porDefecto;
+        }
     }
 
     private void aplicarMetodoPago(Order order, Object rawId) {

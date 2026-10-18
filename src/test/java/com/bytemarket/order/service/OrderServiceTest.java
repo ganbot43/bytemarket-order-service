@@ -1,5 +1,6 @@
 package com.bytemarket.order.service;
 
+import com.bytemarket.order.client.CatalogInventoryClient;
 import com.bytemarket.order.messaging.PedidoEventPublisher;
 import com.bytemarket.order.messaging.StockPublisher;
 import com.bytemarket.order.model.Order;
@@ -29,6 +30,7 @@ class OrderServiceTest {
     private IOrderStatusLogRepository statusLogRepository;
     private StockPublisher stockPublisher;
     private PedidoEventPublisher pedidoEventPublisher;
+    private CatalogInventoryClient catalogInventoryClient;
     private OrderService orderService;
 
     @BeforeEach
@@ -37,9 +39,10 @@ class OrderServiceTest {
         statusLogRepository = mock(IOrderStatusLogRepository.class);
         stockPublisher = mock(StockPublisher.class);
         pedidoEventPublisher = mock(PedidoEventPublisher.class);
+        catalogInventoryClient = mock(CatalogInventoryClient.class);
         orderService = new OrderService(orderRepository, statusLogRepository,
                 mock(IPaymentMethodRepository.class), mock(CartService.class), stockPublisher,
-                pedidoEventPublisher);
+                catalogInventoryClient, pedidoEventPublisher);
 
         when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
     }

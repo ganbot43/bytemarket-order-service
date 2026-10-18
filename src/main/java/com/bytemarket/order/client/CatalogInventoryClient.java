@@ -25,6 +25,19 @@ import java.util.Map;
         fallback = CatalogInventoryClientFallback.class)
 public interface CatalogInventoryClient {
 
+    /**
+     * Aparta las unidades del pedido antes de guardarlo.
+     *
+     * Devuelve 409 si no alcanzan, y ese error tiene que llegar al cliente
+     * tal cual: es la única respuesta honesta a "lo que querías ya no está".
+     */
+    @PostMapping("/stock-reserve")
+    Map<String, Object> reserveStock(@RequestBody Map<String, Object> body);
+
+    /** Devuelve lo apartado de un pedido que no salió adelante. */
+    @PostMapping("/stock-release")
+    Map<String, Object> releaseStock(@RequestBody Map<String, Object> body);
+
     @PostMapping("/movements/backfill")
     Map<String, Object> backfillMovements(@RequestBody List<Map<String, Object>> entradas);
 }
