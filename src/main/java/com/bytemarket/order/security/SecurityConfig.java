@@ -57,9 +57,22 @@ public class SecurityConfig {
                 // Ver su propio turno. Abrir y cuadrar, no: eso es del jefe.
                 .requestMatchers(HttpMethod.GET, "/api/admin/caja/sesion")
                     .hasAnyRole("CAJERO", "JEFE_VENTAS", "ADMIN", "SUPERADMIN")
-                // Consultar pedidos para atender a quien pregunta por el suyo.
+                /*
+                 * El cajero NO lista pedidos.
+                 *
+                 * Se lo había abierto pensando en "que pueda atender a
+                 * quien pregunta por el suyo", pero ese listado trae el
+                 * nombre, el teléfono, el correo y la dirección de cada
+                 * cliente de la tienda: para resolver una consulta puntual
+                 * se entregaba la base de datos entera.
+                 *
+                 * "Vende y atiende" es el mostrador. La consulta de pedidos
+                 * web es del jefe o del encargado; si algún día el cajero la
+                 * necesita, será con una búsqueda por código exacto, no con
+                 * el listado.
+                 */
                 .requestMatchers(HttpMethod.GET, "/api/admin/orders/**")
-                    .hasAnyRole("CAJERO", "JEFE_VENTAS", "ADMIN", "SUPERADMIN")
+                    .hasAnyRole("JEFE_VENTAS", "ADMIN", "SUPERADMIN")
 
                 // Fondos, movimientos y arqueo: del jefe de ventas.
                 .requestMatchers("/api/admin/caja/**")
