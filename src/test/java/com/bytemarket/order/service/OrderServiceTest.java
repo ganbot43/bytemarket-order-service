@@ -111,6 +111,31 @@ class OrderServiceTest {
     }
 
     @Test
+    @DisplayName("un pedido entregado tampoco vuelve atrás")
+    void entregadoNoVuelveAtras() {
+        // Sin stock de por medio, pero igual de malo: diría que un pedido
+        // que el cliente tiene en casa está por preparar.
+        assertThrows(CartService.CartException.class,
+                () -> orderService.changeStatus(pedido("delivered"), "pending", null, 5L));
+
+        verify(orderRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("un pedido cancelado ya no sale de ahí")
+    void canceladoEsFinal() {
+        // Cancelar ya devolvió el stock, y pasar a entregado NO lo vuelve a
+        // descontar: la salida se publica al crear el pedido y no se
+        // repite. El inventario se quedaría inflado.
+        CartService.CartException e = assertThrows(CartService.CartException.class,
+                () -> orderService.changeStatus(pedido("cancelled"), "delivered", null, 5L));
+
+        assertTrue(e.getMessage().contains("cancelado"), "el mensaje debe decir por qué");
+        verify(orderRepository, never()).save(any());
+        verify(stockPublisher, never()).publicarSalida(any(), any(), any());
+    }
+
+    @Test
     @DisplayName("cancelar un pedido no entregado sí devuelve el stock")
     void cancelarDevuelveStock() {
         orderService.changeStatus(pedido("payment_validated"), "cancelled", "Cliente desistió", 5L);

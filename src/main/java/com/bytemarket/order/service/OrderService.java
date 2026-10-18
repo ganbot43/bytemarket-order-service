@@ -35,6 +35,9 @@ public class OrderService {
     public static final List<String> ESTADOS = List.of(
             "pending", "voucher_sent", "payment_validated", "in_preparation", "delivered", "cancelled");
 
+    /** Estados de los que ya no se sale. El porqué, en changeStatus. */
+    public static final List<String> TERMINALES = List.of("delivered", "cancelled");
+
     // ─── Creación ───────────────────────────────────────────────
 
     @Transactional
@@ -167,28 +170,39 @@ public class OrderService {
         if (nuevoEstado.equals(anterior)) return order;
 
         /*
-         * Un pedido entregado no se cancela.
+         * De entregado y de cancelado ya no se sale.
          *
-         * No es una regla de formulario: cancelar publica una ENTRADA de
-         * stock, y entregado significa que las unidades ya salieron por la
-         * puerta. Cancelarlo las devolvería al inventario sin que nadie las
-         * haya traído, y a partir de ahí la existencia del sistema deja de
-         * ser la del almacén.
+         * Las dos cosas son finales porque las dos ya movieron el stock, y
+         * deshacerlas lo movería otra vez en el sentido que no toca:
          *
-         * Y aunque no tocara el stock, seguiría estando mal: el histórico
-         * diría que un pedido que el cliente ya tiene en casa nunca
-         * ocurrió. Lo que se hace con una entrega que vuelve es registrar
-         * la devolución —un movimiento de entrada, con su motivo—, no
-         * borrar la venta.
+         *  · Entregado significa que las unidades salieron por la puerta.
+         *    Cancelarlo publica una ENTRADA y las devuelve al inventario
+         *    sin que nadie las haya traído.
+         *  · Cancelado ya devolvió el stock. Sacarlo de ahí —a entregado,
+         *    por ejemplo— NO lo vuelve a descontar, porque la salida se
+         *    publica al crear el pedido y eso no se repite. El inventario
+         *    se queda inflado, y por el mismo sitio.
+         *
+         * Y aunque el stock no entrara en juego, seguiría estando mal:
+         * devolver un entregado a "pendiente" dice que un pedido que el
+         * cliente tiene en casa está por preparar. El histórico de estados
+         * es una auditoría, no un borrador.
+         *
+         * Lo que se hace con una entrega que vuelve es registrar la
+         * devolución —una entrada con su motivo, desde Inventario—, que
+         * deja rastro de las dos cosas: que se vendió y que volvió.
          *
          * Se comprueba aquí, en el servicio, y no en el panel: el panel es
          * una de las formas de llegar, y la API admin está abierta a
          * cualquiera con un token de administrador.
          */
-        if ("cancelled".equals(nuevoEstado) && "delivered".equals(anterior)) {
+        if (TERMINALES.contains(anterior)) {
             throw new CartService.CartException(
-                    "Un pedido entregado no se puede cancelar. Si la mercadería volvió, "
-                            + "regístralo como una entrada en Inventario para dejar rastro de la devolución.");
+                    "delivered".equals(anterior)
+                            ? "Un pedido entregado ya no cambia de estado. Si la mercadería volvió, "
+                              + "regístralo como una entrada en Inventario para dejar rastro de la devolución."
+                            : "Un pedido cancelado ya no cambia de estado. Su stock se devolvió al "
+                              + "cancelarlo; para venderlo otra vez, registra un pedido nuevo.");
         }
 
         order.setStatus(nuevoEstado);
