@@ -5,6 +5,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -36,6 +37,39 @@ public class SecurityConfig {
             .formLogin(f -> f.disable())
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
+                /*
+                 * /api/admin/** deja de ser todo o nada.
+                 *
+                 * Con una sola regla, el cajero que necesita cobrar podía
+                 * también cambiar cupones y leer los reportes de ventas. El
+                 * control interno de una caja se apoya justo en lo
+                 * contrario: quien vende no cuadra, y quien cuadra no
+                 * cambia precios.
+                 *
+                 * El orden importa: Spring se queda con la PRIMERA regla
+                 * que encaja, así que lo específico va antes que el
+                 * comodín.
+                 */
+
+                // Vender: es lo único que hace un cajero.
+                .requestMatchers(HttpMethod.POST, "/api/admin/orders")
+                    .hasAnyRole("CAJERO", "JEFE_VENTAS", "ADMIN", "SUPERADMIN")
+                // Ver su propio turno. Abrir y cuadrar, no: eso es del jefe.
+                .requestMatchers(HttpMethod.GET, "/api/admin/caja/sesion")
+                    .hasAnyRole("CAJERO", "JEFE_VENTAS", "ADMIN", "SUPERADMIN")
+                // Consultar pedidos para atender a quien pregunta por el suyo.
+                .requestMatchers(HttpMethod.GET, "/api/admin/orders/**")
+                    .hasAnyRole("CAJERO", "JEFE_VENTAS", "ADMIN", "SUPERADMIN")
+
+                // Fondos, movimientos y arqueo: del jefe de ventas.
+                .requestMatchers("/api/admin/caja/**")
+                    .hasAnyRole("JEFE_VENTAS", "ADMIN", "SUPERADMIN")
+                // Reportes: el jefe los necesita para cuadrar el día.
+                .requestMatchers("/api/admin/reports/**", "/api/admin/automation/**")
+                    .hasAnyRole("JEFE_VENTAS", "ADMIN", "SUPERADMIN")
+
+                // Lo demás —cupones, métodos de pago, cambiar estados— es
+                // gestión de tienda.
                 .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "SUPERADMIN")
                 // La sonda queda abierta porque el healthcheck de Docker la
                 // consulta sin credenciales. No filtra nada: con
