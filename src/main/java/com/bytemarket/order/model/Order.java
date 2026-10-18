@@ -146,6 +146,21 @@ public class Order {
     @Column(name = "change_given")
     private Double changeGiven;
 
+    /**
+     * La llave de las unidades apartadas para este pedido.
+     *
+     * Se guarda porque el descuento llega después, por la cola, y hay que
+     * poder decirle a catalog QUÉ reserva consumir. No vale el código del
+     * pedido: ese se genera antes de guardar y dos checkouts simultáneos
+     * pueden sacar el mismo, y entonces un pedido consumiría las unidades
+     * del otro.
+     *
+     * Null en los pedidos de caja —entregan en el acto, no apartan nada— y
+     * en los anteriores a que existieran las reservas.
+     */
+    @Column(name = "reservation_token", length = 36)
+    private String reservationToken;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 

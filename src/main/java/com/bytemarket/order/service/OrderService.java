@@ -96,6 +96,7 @@ public class OrderService {
          * Al revés sería tarde: un pedido guardado con unidades que no hay
          * es una promesa que alguien tendrá que deshacer a mano.
          */
+        order.setReservationToken(java.util.UUID.randomUUID().toString());
         reservarStock(order);
 
         Order guardado;
@@ -106,7 +107,7 @@ public class OrderService {
             // Las unidades ya están apartadas y el pedido no existe: se
             // devuelven ahora en vez de esperar a que caduquen, para que el
             // producto no figure agotado por algo que ya se sabe fallido.
-            liberarStock(order.getOrderCode());
+            liberarStock(order.getReservationToken());
             throw e;
         }
 
@@ -128,7 +129,8 @@ public class OrderService {
      * entre perder la venta o perder el descuento.
      */
     private void descontarStock(Order order) {
-        stockPublisher.publicarSalida(order.getId().longValue(), order.getOrderCode(), itemsPayload(order));
+        stockPublisher.publicarSalida(order.getId().longValue(), order.getOrderCode(),
+                order.getReservationToken(), itemsPayload(order));
     }
 
     /**
@@ -139,6 +141,7 @@ public class OrderService {
      */
     private void reservarStock(Order order) {
         Map<String, Object> cuerpo = new HashMap<>();
+        cuerpo.put("token", order.getReservationToken());
         cuerpo.put("orderCode", order.getOrderCode());
         cuerpo.put("items", itemsPayload(order));
         try {
@@ -153,14 +156,15 @@ public class OrderService {
         }
     }
 
-    private void liberarStock(String orderCode) {
+    private void liberarStock(String token) {
+        if (token == null) return;
         try {
-            catalogInventoryClient.releaseStock(Map.of("orderCode", orderCode));
+            catalogInventoryClient.releaseStock(Map.of("token", token));
         } catch (Exception e) {
             // No se insiste: las reservas caducan solas. Peor sería tapar el
             // error original del pedido con este.
-            log.warn("Pedido {}: no se pudieron devolver las unidades apartadas: {}. "
-                    + "Caducarán solas.", orderCode, e.getMessage());
+            log.warn("Reserva {}: no se pudieron devolver las unidades apartadas: {}. "
+                    + "Caducarán solas.", token, e.getMessage());
         }
     }
 

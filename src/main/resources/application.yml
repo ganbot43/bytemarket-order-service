@@ -123,6 +123,14 @@ resilience4j:
         # /actuator/health, que es como se ve desde fuera si order-service
         # está teniendo problemas para hablar con catalog.
         registerHealthIndicator: true
+        # Un 409 no es que catalog esté caído: es que contestó, y la
+        # respuesta es "no hay stock". Contarlo como fallo hacía que un
+        # producto popular agotado abriera el circuito, y a partir de ahí
+        # el fallback rechazaba TODAS las compras —incluidas las de
+        # productos que sí había— durante quince segundos. Un agotado
+        # tumbando el checkout entero.
+        ignoreExceptions:
+          - feign.FeignException$Conflict
     # ── Nombres de instancia: OJO ──────────────────────────────
     # Spring Cloud NO registra el circuito con la firma del método tal cual.
     # Le quita '#', '(', ')' y las comas, así que
@@ -139,6 +147,9 @@ resilience4j:
       # El checkout: los 8 segundos completos, porque de esta llamada
       # depende que el cliente pueda comprar.
       CatalogPricingClientresolveList:
+        baseConfig: default
+      # La reserva del checkout: mismo trato que los precios.
+      CatalogInventoryClientreserveStockMap:
         baseConfig: default
       CatalogReportingClientlowStockint:
         baseConfig: default

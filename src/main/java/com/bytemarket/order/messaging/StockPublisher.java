@@ -35,6 +35,12 @@ public class StockPublisher {
 
     private final RabbitTemplate rabbitTemplate;
 
+    /** Con la llave de la reserva, para que catalog consuma esas unidades. */
+    public void publicarSalida(Long orderId, String orderCode, String reservationToken,
+                               List<Map<String, Object>> items) {
+        publicar("exit", orderId, orderCode, reservationToken, items);
+    }
+
     public void publicarSalida(Long orderId, String orderCode, List<Map<String, Object>> items) {
         publicar("exit", orderId, orderCode, items);
     }
@@ -44,10 +50,16 @@ public class StockPublisher {
     }
 
     private void publicar(String tipo, Long orderId, String orderCode, List<Map<String, Object>> items) {
+        publicar(tipo, orderId, orderCode, null, items);
+    }
+
+    private void publicar(String tipo, Long orderId, String orderCode, String reservationToken,
+                          List<Map<String, Object>> items) {
         Map<String, Object> evento = new LinkedHashMap<>();
         evento.put("tipo", tipo);
         evento.put("orderId", orderId);
         evento.put("orderCode", orderCode);
+        if (reservationToken != null) evento.put("reservationToken", reservationToken);
         evento.put("items", items);
 
         try {
