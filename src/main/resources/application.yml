@@ -43,6 +43,14 @@ spring:
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USER:guest}
     password: ${RABBITMQ_PASSWORD:guest}
+    # Mismo criterio que en Kafka: si el bus no está, que se note rápido.
+    # convertAndSend abre la conexión la primera vez, y sin este tope el
+    # intento se queda esperando al sistema operativo con el cliente mirando
+    # una pantalla parada. El catch de StockPublisher solo entra si el
+    # intento FALLA; si se eterniza, no entra.
+    connection-timeout: 2000
+    template:
+      reply-timeout: 2000
   kafka:
     bootstrap-servers: ${KAFKA_SERVERS:localhost:9094}
     producer:
@@ -60,6 +68,25 @@ spring:
         # ese paquete y la deserialización falla. Quitando la cabecera, cada
         # consumidor mapea el JSON a su propia copia del contrato.
         spring.json.add.type.headers: false
+
+        # Cuánto puede tardar un Kafka enfermo en no responder.
+        #
+        # send() parece asíncrono, pero bloquea el hilo de la petición
+        # mientras busca los metadatos del topic, y ese bloqueo dura
+        # max.block.ms: por defecto UN MINUTO. El try/catch de alrededor no
+        # salva de eso, porque no es una excepción, es espera. Con Kafka
+        # caído o con un DNS que no resuelve, cada cambio de estado y cada
+        # compra se quedaban colgados hasta agotarlo.
+        #
+        # Dos segundos es de sobra para un broker sano en la misma red, y
+        # convierte un Kafka ausente en un aviso en el log en vez de en una
+        # pantalla congelada. El pedido ya está guardado; el evento solo
+        # dispara el correo al cliente.
+        max.block.ms: 2000
+        # Y un techo al total de reintentos, para que los 3 retries de
+        # arriba no se conviertan en dos minutos de cola.
+        delivery.timeout.ms: 5000
+        request.timeout.ms: 2000
 
 eureka:
   client:

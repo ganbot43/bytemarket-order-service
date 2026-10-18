@@ -6,7 +6,28 @@ import java.time.LocalDateTime;
 
 @Data
 @Entity
-@Table(name = "orders")
+/*
+ * Índices de lo que el panel pregunta todo el rato.
+ *
+ * La tabla no tenía ninguno aparte de la clave y el único de order_code, y
+ * todas las consultas del panel filtran u ordenan por estas tres columnas:
+ * la lista por estado, el resumen y los reportes por fecha, y el dinero por
+ * estado de pago. Con treinta pedidos no se nota; es a partir de unos miles
+ * cuando cada carga del panel pasa a recorrer la tabla entera.
+ *
+ * Hibernate los crea solo con ddl-auto: update, así que no hace falta
+ * migración.
+ */
+@Table(name = "orders", indexes = {
+        // El orden de las columnas importa: se filtra por estado y se
+        // ordena por fecha, en ese orden, así que el índice sirve para las
+        // dos cosas de una pasada.
+        @Index(name = "idx_orders_estado_fecha", columnList = "status, created_at"),
+        // Los reportes recorren rangos de fecha sin filtrar por estado.
+        @Index(name = "idx_orders_fecha", columnList = "created_at"),
+        // Y el dinero cobrado filtra por los dos a la vez.
+        @Index(name = "idx_orders_pago_estado", columnList = "payment_status, status")
+})
 public class Order {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
