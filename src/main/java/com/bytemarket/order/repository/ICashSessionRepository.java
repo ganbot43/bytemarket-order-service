@@ -6,17 +6,29 @@ import org.springframework.data.domain.Pageable;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
 public interface ICashSessionRepository extends JpaRepository<CashSession, Integer> {
 
-    /** La caja abierta de alguien. Como mucho hay una. Solo para leer. */
-    Optional<CashSession> findFirstByOpenedByAndStatus(Long openedBy, String status);
+    /**
+     * La caja abierta de un cajero. Como mucho hay una. Solo para leer.
+     *
+     * Se busca por el cajero y no por quien aperturó: el turno es del cajón
+     * con el que se cobra, y lo abre otra persona. Preguntando por
+     * `openedBy`, el cajero no encontraba su propia caja y el jefe se
+     * encontraba la del cajero como si fuera la suya.
+     */
+    Optional<CashSession> findFirstByCashierIdAndStatus(Long cashierId, String status);
+
+    /** Las cajas abiertas ahora mismo: lo que el encargado tiene que cuadrar. */
+    List<CashSession> findByStatusOrderByOpenedAtAsc(String status);
 
     /**
      * La caja abierta, bloqueando su fila hasta el fin de la transacción.
@@ -36,10 +48,18 @@ public interface ICashSessionRepository extends JpaRepository<CashSession, Integ
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             SELECT s FROM CashSession s
-            WHERE s.openedBy = :openedBy AND s.status = :status
+            WHERE s.cashierId = :cashierId AND s.status = :status
             """)
-    Optional<CashSession> bloquearAbierta(@Param("openedBy") Long openedBy,
+    Optional<CashSession> bloquearAbierta(@Param("cashierId") Long cashierId,
                                           @Param("status") String status);
+
+    /**
+     * Un turno concreto, con su fila bloqueada. Lo usa el encargado: él no
+     * cierra "su" caja sino la de alguien, así que llega por id.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT s FROM CashSession s WHERE s.id = :id")
+    Optional<CashSession> bloquearPorId(@Param("id") Integer id);
 
     /** El histórico, para el reporte: lo último primero. */
     Page<CashSession> findByStatusOrderByClosedAtDesc(String status, Pageable pageable);
@@ -74,4 +94,21 @@ public interface ICashSessionRepository extends JpaRepository<CashSession, Integ
             GROUP BY COALESCE(o.payment_method_type, 'otro')
             """, nativeQuery = true)
     java.util.List<java.util.Map<String, Object>> ventasPorForma(@Param("sessionId") Integer sessionId);
+
+    /**
+     * Rellena el cajero de los turnos que se guardaron cuando abrir y
+     * cobrar eran la misma persona.
+     *
+     * En esas filas `opened_by` significaba exactamente lo que ahora
+     * significa `cashier_id`, así que copiarlo es la traducción fiel. Sin
+     * esto, el histórico de arqueos aparecería sin cajero —y un arqueo sin
+     * dueño no sirve para lo que existe—.
+     */
+    @Modifying
+    @Query(value = """
+            UPDATE cash_sessions
+            SET cashier_id = opened_by, cashier_name = opened_by_name
+            WHERE cashier_id IS NULL
+            """, nativeQuery = true)
+    int rellenarCajeroDeTurnosAntiguos();
 }

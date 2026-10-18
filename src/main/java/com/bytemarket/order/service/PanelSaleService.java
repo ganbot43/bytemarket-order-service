@@ -107,8 +107,12 @@ public class PanelSaleService {
     /** El resultado, con lo que la pantalla necesita para pintar el ticket. */
     public record Resultado(Order order, Double change) {}
 
+    /** El rol de quien vende. Solo importa uno, y es por lo que no puede hacer. */
+    private static final String CAJERO = "cajero";
+
     @Transactional
-    public Resultado registrar(Peticion p, Long adminUserId) {
+    public Resultado registrar(Peticion p, Long adminUserId, String rolDeQuienVende) {
+        boolean esCajero = CAJERO.equals(rolDeQuienVende);
         String canal = texto(p.channel()) == null ? "caja" : p.channel().trim().toLowerCase();
         if (!CANALES.contains(canal)) {
             throw new CartService.CartException("Canal de venta no válido");
@@ -122,12 +126,19 @@ public class PanelSaleService {
             throw new CartService.CartException("Escribe el nombre del cliente");
         }
 
-        List<OrderItem> lineas = construirLineas(p.items());
+        List<OrderItem> lineas = construirLineas(p.items(), esCajero);
         double subtotal = redondear(lineas.stream().mapToDouble(OrderItem::getSubtotal).sum());
 
         // El descuento a mano y el cupón se suman, y juntos no pueden pasar
         // del subtotal: un total negativo no significa nada.
         double aMano = redondear(Math.max(0d, p.discount() == null ? 0d : p.discount()));
+        if (esCajero && aMano > 0) {
+            // Un descuento a mano es dinero que la tienda deja de cobrar, y
+            // el cajón sigue cuadrando igual de bien. Por eso lo autoriza
+            // quien no cobra.
+            throw new CartService.CartException(
+                    "Un descuento lo autoriza tu jefe de ventas. Llámalo antes de cobrar.");
+        }
         CartService.AppliedCoupon cupon = cartService.applyCoupon(texto(p.couponCode()), subtotal);
         double descuento = redondear(Math.min(aMano + cupon.discount(), subtotal));
         double total = redondear(subtotal - descuento);
@@ -195,8 +206,19 @@ public class PanelSaleService {
     /**
      * Agrupa por producto, comprueba contra el catálogo y construye las
      * líneas con el precio que escribió quien vende.
+     *
+     * Quien vende pone el precio porque en el mostrador se regatea: se
+     * redondea un total, se hace un precio por llevar dos. Eso vale para el
+     * encargado y para el jefe de ventas.
+     *
+     * Para el cajero no. Si puede escribir el precio, el arqueo deja de
+     * servir justo para lo que existe: vendiendo una batería de 155 soles a
+     * 10, el cajón cuadra perfecto al final del turno —el sistema esperaba
+     * los 10— y los 145 no aparecen por ningún lado. No es un descuadre que
+     * se pueda ver contando dinero, así que la única forma de evitarlo es
+     * que no pueda tocar el precio.
      */
-    private List<OrderItem> construirLineas(List<LineaDeVenta> pedidas) {
+    private List<OrderItem> construirLineas(List<LineaDeVenta> pedidas, boolean esCajero) {
         if (pedidas == null || pedidas.isEmpty()) {
             throw new CartService.CartException("Agrega al menos un producto");
         }
@@ -226,8 +248,17 @@ public class PanelSaleService {
             int qty = e.getValue();
             // El nombre lo pone el catálogo, no el panel: el pedido tiene que
             // decir qué se vendió de verdad.
-            String nombre = cartService.validarVendible(catalogo.get(e.getKey()), qty);
+            Map<String, Object> delCatalogo = catalogo.get(e.getKey());
+            String nombre = cartService.validarVendible(delCatalogo, qty);
             double precio = redondear(precios.get(e.getKey()));
+
+            if (esCajero) {
+                double deLista = redondear(precioDeLista(delCatalogo));
+                if (Math.abs(precio - deLista) >= 0.005) {
+                    throw new CartService.CartException(nombre + " cuesta " + money(deLista)
+                            + ". Para cobrar otro precio necesitas a tu jefe de ventas.");
+                }
+            }
 
             OrderItem item = new OrderItem();
             item.setProductId(e.getKey().longValue());
@@ -366,5 +397,15 @@ public class PanelSaleService {
 
     private static double redondear(double v) {
         return Math.round(v * 100d) / 100d;
+    }
+
+    /** El precio del catálogo, que es el único que el cajero puede cobrar. */
+    private static double precioDeLista(Map<String, Object> delCatalogo) {
+        Object v = delCatalogo == null ? null : delCatalogo.get("price");
+        return v == null ? 0d : Double.parseDouble(v.toString());
+    }
+
+    private static String money(double v) {
+        return "S/ " + String.format("%.2f", v);
     }
 }

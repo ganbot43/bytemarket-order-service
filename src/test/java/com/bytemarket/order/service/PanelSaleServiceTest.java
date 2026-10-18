@@ -84,11 +84,59 @@ class PanelSaleServiceTest {
                 0d, null, "efectivo", null, efectivo);
     }
 
+    /** La misma venta, pero quien cobra es el cajero. */
+    private PanelSaleService.Peticion conDescuento(double aMano) {
+        return new PanelSaleService.Peticion("caja", null, null, null, null, null, null,
+                List.of(new PanelSaleService.LineaDeVenta(4, 1, 60.0)),
+                aMano, null, "efectivo", null, null);
+    }
+
+    @Test
+    @DisplayName("el cajero cobra el precio del catálogo y no otro")
+    void elCajeroNoPoneElPrecio() {
+        // El catálogo dice 60. Si pudiera cobrar 10, el arqueo cuadraría
+        // perfecto al final del turno —el sistema esperaba 10— y los 50
+        // restantes no aparecerían en ningún sitio. No es un descuadre que
+        // se pueda ver contando dinero.
+        CartService.CartException e = assertThrows(CartService.CartException.class,
+                () -> service.registrar(caja(10.0, 1, null), 9L, "cajero"));
+
+        assertTrue(e.getMessage().contains("60"), "dice cuánto cuesta: " + e.getMessage());
+        assertTrue(e.getMessage().contains("jefe"), "y a quién pedírselo: " + e.getMessage());
+        verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
+    @DisplayName("tampoco cobra de más")
+    void elCajeroTampocoSube() {
+        assertThrows(CartService.CartException.class,
+                () -> service.registrar(caja(90.0, 1, null), 9L, "cajero"));
+    }
+
+    @Test
+    @DisplayName("al precio de catálogo, el cajero vende sin problema")
+    void elCajeroVendeAlPrecioDeLista() {
+        Order o = service.registrar(caja(60.0, 2, null), 9L, "cajero").order();
+        assertEquals(120.0, o.getTotal());
+    }
+
+    @Test
+    @DisplayName("un descuento a mano lo autoriza el jefe, no el cajero")
+    void elDescuentoEsDelJefe() {
+        CartService.CartException e = assertThrows(CartService.CartException.class,
+                () -> service.registrar(conDescuento(15), 9L, "cajero"));
+        assertTrue(e.getMessage().contains("jefe"), e.getMessage());
+
+        // Al jefe de ventas sí se lo deja: en el mostrador se regatea.
+        Order o = service.registrar(conDescuento(15), 3L, "jefe_ventas").order();
+        assertEquals(45.0, o.getTotal());
+    }
+
     @Test
     @DisplayName("el precio lo pone quien vende, no el catálogo")
     void usaElPrecioDelVendedor() {
         // El catálogo dice 60.0; el vendedor cobra 45.
-        Order o = service.registrar(caja(45.0, 2, null), 3L).order();
+        Order o = service.registrar(caja(45.0, 2, null), 3L, "admin").order();
 
         assertEquals(90.0, o.getSubtotal());
         assertEquals(90.0, o.getTotal());
@@ -98,14 +146,14 @@ class PanelSaleServiceTest {
     @Test
     @DisplayName("el nombre del producto lo pone el catálogo, no el panel")
     void elNombreVieneDelCatalogo() {
-        Order o = service.registrar(caja(45.0, 1, null), 3L).order();
+        Order o = service.registrar(caja(45.0, 1, null), 3L, "admin").order();
         assertEquals("Batería Samsung A52", o.getItems().get(0).getProductName());
     }
 
     @Test
     @DisplayName("una venta de caja nace entregada y pagada")
     void laCajaCobraYEntrega() {
-        Order o = service.registrar(caja(50.0, 1, null), 3L).order();
+        Order o = service.registrar(caja(50.0, 1, null), 3L, "admin").order();
 
         assertEquals("delivered", o.getStatus());
         assertEquals("paid", o.estadoDePago());
@@ -117,7 +165,7 @@ class PanelSaleServiceTest {
     @Test
     @DisplayName("calcula el vuelto del efectivo recibido")
     void calculaElVuelto() {
-        PanelSaleService.Resultado r = service.registrar(caja(30.0, 1, 50.0), 3L);
+        PanelSaleService.Resultado r = service.registrar(caja(30.0, 1, 50.0), 3L, "admin");
 
         assertEquals(50.0, r.order().getCashReceived());
         assertEquals(20.0, r.change());
@@ -127,7 +175,7 @@ class PanelSaleServiceTest {
     @DisplayName("si el efectivo no alcanza, se rechaza la venta")
     void rechazaEfectivoInsuficiente() {
         CartService.CartException e = assertThrows(CartService.CartException.class,
-                () -> service.registrar(caja(100.0, 1, 50.0), 3L));
+                () -> service.registrar(caja(100.0, 1, 50.0), 3L, "admin"));
 
         assertTrue(e.getMessage().toLowerCase().contains("no alcanza"), e.getMessage());
         verify(orderRepository, never()).save(any());
@@ -136,7 +184,7 @@ class PanelSaleServiceTest {
     @Test
     @DisplayName("descuenta stock por la MISMA cola que el checkout")
     void publicaElDescuentoDeStock() {
-        service.registrar(caja(50.0, 3, null), 3L);
+        service.registrar(caja(50.0, 3, null), 3L, "admin");
 
         verify(stockPublisher).publicarSalida(eq(77L), anyString(), any());
         verify(pedidoEventPublisher).publicarCreado(any(Order.class));
@@ -151,7 +199,7 @@ class PanelSaleServiceTest {
                 0d, null, "yape", "pending", null);
 
         CartService.CartException e = assertThrows(CartService.CartException.class,
-                () -> service.registrar(sinNombre, 3L));
+                () -> service.registrar(sinNombre, 3L, "admin"));
         assertTrue(e.getMessage().toLowerCase().contains("nombre"), e.getMessage());
     }
 
@@ -163,7 +211,7 @@ class PanelSaleServiceTest {
                 List.of(new PanelSaleService.LineaDeVenta(4, 1, 50.0)),
                 0d, null, "yape", "pending", null);
 
-        Order o = service.registrar(porCobrar, 3L).order();
+        Order o = service.registrar(porCobrar, 3L, "admin").order();
 
         assertEquals("pending", o.getStatus());
         assertEquals("pending", o.estadoDePago());
@@ -179,7 +227,7 @@ class PanelSaleServiceTest {
                 List.of(new PanelSaleService.LineaDeVenta(4, 1, 50.0)),
                 999d, null, "efectivo", null, null);
 
-        Order o = service.registrar(regalado, 3L).order();
+        Order o = service.registrar(regalado, 3L, "admin").order();
 
         assertEquals(0.0, o.getTotal());
         assertEquals(50.0, o.getDiscountApplied());
@@ -196,7 +244,7 @@ class PanelSaleServiceTest {
                 List.of(new PanelSaleService.LineaDeVenta(4, 1, 100.0)),
                 5d, "VERANO", "efectivo", null, null);
 
-        Order o = service.registrar(conCupon, 3L).order();
+        Order o = service.registrar(conCupon, 3L, "admin").order();
 
         assertEquals(15.0, o.getDiscountApplied());
         assertEquals(85.0, o.getTotal());
@@ -212,7 +260,7 @@ class PanelSaleServiceTest {
                         new PanelSaleService.LineaDeVenta(4, 3, 50.0)),
                 0d, null, "efectivo", null, null);
 
-        Order o = service.registrar(repetido, 3L).order();
+        Order o = service.registrar(repetido, 3L, "admin").order();
 
         assertEquals(1, o.getItems().size());
         assertEquals(5, o.getItems().get(0).getQuantity());
@@ -227,7 +275,7 @@ class PanelSaleServiceTest {
                 "caja", null, null, null, null, null, null, List.of(),
                 0d, null, "efectivo", null, null);
 
-        assertThrows(CartService.CartException.class, () -> service.registrar(vacia, 3L));
+        assertThrows(CartService.CartException.class, () -> service.registrar(vacia, 3L, "admin"));
         verify(orderRepository, never()).save(any());
     }
 
@@ -239,7 +287,7 @@ class PanelSaleServiceTest {
                 List.of(new PanelSaleService.LineaDeVenta(4, 1, 50.0)),
                 0d, null, "trueque", null, null);
 
-        assertThrows(CartService.CartException.class, () -> service.registrar(rara, 3L));
+        assertThrows(CartService.CartException.class, () -> service.registrar(rara, 3L, "admin"));
     }
 
     @Test
@@ -250,13 +298,13 @@ class PanelSaleServiceTest {
                 List.of(new PanelSaleService.LineaDeVenta(4, 1, 50.0)),
                 0d, null, "efectivo", null, null);
 
-        assertThrows(CartService.CartException.class, () -> service.registrar(rara, 3L));
+        assertThrows(CartService.CartException.class, () -> service.registrar(rara, 3L, "admin"));
     }
 
     @Test
     @DisplayName("queda escrito en el historial de dónde salió la venta")
     void dejaRastroEnElHistorial() {
-        service.registrar(caja(50.0, 1, 50.0), 3L);
+        service.registrar(caja(50.0, 1, 50.0), 3L, "admin");
         verify(statusLogRepository).saveAll(argThat(logs -> {
             var lista = new java.util.ArrayList<com.bytemarket.order.model.OrderStatusLog>();
             logs.forEach(lista::add);

@@ -102,7 +102,10 @@ public class ApiAdminOrderController {
     public ResponseEntity<?> createPanelSale(@RequestBody Map<String, Object> body) {
         Long adminId = CurrentUser.get().map(u -> u.id()).orElse(null);
         try {
-            PanelSaleService.Resultado r = panelSaleService.registrar(leerVenta(body), adminId);
+            // El rol va al servicio porque hay una regla que depende de él:
+            // el cajero cobra el precio del catálogo y no otro.
+            String rol = CurrentUser.get().map(u -> u.role()).orElse(null);
+            PanelSaleService.Resultado r = panelSaleService.registrar(leerVenta(body), adminId, rol);
             Order o = r.order();
 
             Map<String, Object> resp = new LinkedHashMap<>();

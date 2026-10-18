@@ -19,6 +19,14 @@ import java.time.LocalDateTime;
  * quién atendió, y hace que un faltante tenga dueño: con una caja
  * compartida, el descuadre aparece y no hay a quién preguntar.
  *
+ * Y tiene DOS personas, que es la parte que al principio no estaba:
+ * `cashierId` es de quién es el cajón, y `openedBy` quién lo aperturó y
+ * entregó el fondo. Cuando eran la misma columna, el cajero se abría su
+ * propia caja con el fondo que quisiera y la cerraba él solo declarando lo
+ * que quisiera: el arqueo lo firmaba la misma persona a la que vigila, así
+ * que no vigilaba nada. Separarlas es lo que convierte esto en un control
+ * y no en un formulario.
+ *
  * Solo el EFECTIVO entra en el cuadre. Yape, tarjeta y transferencia se
  * cuentan aparte como referencia, pero ese dinero nunca pasó por el cajón:
  * meterlo en el esperado es el error más común al montar esto, y hace que
@@ -28,7 +36,9 @@ import java.time.LocalDateTime;
 @Data
 @Entity
 @Table(name = "cash_sessions", indexes = {
-        // La consulta de cada carga de la pantalla: "¿tengo caja abierta?"
+        // La consulta de cada carga de la pantalla: "¿tengo caja abierta?",
+        // que ahora se pregunta por el cajero y no por quien aperturó.
+        @Index(name = "idx_caja_cajero_estado", columnList = "cashier_id, status"),
         @Index(name = "idx_caja_usuario_estado", columnList = "opened_by, status"),
         @Index(name = "idx_caja_estado_apertura", columnList = "status, opened_at")
 })
@@ -41,14 +51,31 @@ public class CashSession {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
+    /**
+     * De quién es este cajón: quien va a cobrar con él.
+     *
+     * Es el dato con el que la pantalla de caja encuentra su turno y con el
+     * que cada venta se engancha. Nullable en la columna por las filas que
+     * ya existían antes de separar los dos papeles —un arranque las
+     * rellena con `opened_by`, que era lo que significaban entonces—, pero
+     * de aquí en adelante siempre viene.
+     */
+    @Column(name = "cashier_id")
+    private Long cashierId;
+
+    /** El nombre del cajero, copiado al aperturar. Etiqueta, no permiso. */
+    @Column(name = "cashier_name", columnDefinition = "TEXT")
+    private String cashierName;
+
+    /** Quién aperturó y entregó el fondo. El jefe de ventas o el encargado. */
     @Column(name = "opened_by", nullable = false)
     private Long openedBy;
 
     /**
-     * El nombre de quien abrió, copiado al abrir.
+     * El nombre de quien aperturó, copiado al aperturar.
      *
      * Se guarda y no se consulta a user-service al leer el turno: es quien
-     * abrió ESE día. Si mañana cambia de nombre, el arqueo de ayer sigue
+     * aperturó ESE día. Si mañana cambia de nombre, el arqueo de ayer sigue
      * diciendo la verdad. Mismo criterio que el correo del pedido.
      */
     @Column(name = "opened_by_name", columnDefinition = "TEXT")
@@ -70,8 +97,12 @@ public class CashSession {
     /**
      * Lo que se contó físicamente al cerrar.
      *
-     * Lo escribe la persona ANTES de ver el esperado. Al revés el arqueo no
-     * vale nada: quien ve la cifra objetivo deja de contar y la copia.
+     * Lo cuenta el encargado, no el cajero, y lo escribe ANTES de ver el
+     * esperado. Al revés el arqueo no vale nada: quien ve la cifra objetivo
+     * deja de contar y la copia.
+     *
+     * El desglose por forma de pago vive en {@link CashCount}; aquí queda
+     * el efectivo, que es el único que pasó por el cajón.
      */
     @Column(name = "counted_cash")
     private Double countedCash;
