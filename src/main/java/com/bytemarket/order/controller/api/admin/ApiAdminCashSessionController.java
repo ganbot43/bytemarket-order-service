@@ -72,7 +72,14 @@ public class ApiAdminCashSessionController {
              */
             Long yo = usuarioId();
             CashSession mio = cashSessionService.turnoDe(yo);
-            CashSession s = cashSessionService.cerrar(mio == null ? null : mio.getId(), yo);
+            if (mio == null) {
+                // Decir "falta el id de la caja" sería cierto y no serviría:
+                // lo que pasa es que esta persona no tiene ninguna, y es lo
+                // que le sale al jefe cuando prueba a cerrar la del cajero.
+                throw new CashSessionService.CajaException(
+                        "No tienes ninguna caja que cerrar. Cada quien cierra la suya.");
+            }
+            CashSession s = cashSessionService.cerrar(mio.getId(), yo);
             return ResponseEntity.ok(cashSessionService.resumen(s));
         } catch (CashSessionService.CajaException e) {
             return error(e);
