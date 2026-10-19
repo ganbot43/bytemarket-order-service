@@ -292,10 +292,24 @@ public class CashSessionService {
      */
     @Transactional
     public CashSession cerrar(Integer sessionId, Long cajeroId) {
+        /*
+         * Cierra el cajero y nadie más. Ni siquiera quien le entregó el
+         * fondo: si el jefe pudiera cerrar la caja, podría darla por
+         * terminada sin que el cajero lo supiera y cuadrarla él solo a
+         * continuación, que es exactamente lo que los cinco estados
+         * existen para impedir.
+         *
+         * Y sin identificar a quien llama no se cierra nada. Dejarlo pasar
+         * cuando `cajeroId` viene a null —como estaba— convierte un fallo
+         * de autenticación en permiso para cerrar cualquier caja.
+         */
+        if (cajeroId == null) {
+            throw new CajaException("No se pudo identificar quién cierra la caja");
+        }
         CashSession s = exigirEstado(sessionId, CashSession.ABIERTA,
                 "Esa caja no está abierta.");
-        if (cajeroId != null && !cajeroId.equals(s.getCashierId()) && !cajeroId.equals(s.getAssignedBy())) {
-            throw new CajaException("Esa caja no es tuya.");
+        if (!cajeroId.equals(s.getCashierId())) {
+            throw new CajaException("Esa caja no es tuya: la cierra quien cobra con ella.");
         }
         s.setClosedBy(cajeroId);
         s.setClosedAt(LocalDateTime.now());

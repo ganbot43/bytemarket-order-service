@@ -151,6 +151,26 @@ class CashSessionServiceTest {
     }
 
     @Test
+    @DisplayName("la caja la cierra su cajero y nadie más")
+    void cierraSuDueno() {
+        turno(CashSession.ABIERTA, 300);
+
+        // Ni siquiera quien le entregó el fondo: si el jefe pudiera
+        // cerrarla, podría darla por terminada sin que el cajero lo supiera
+        // y cuadrarla él solo a continuación.
+        CashSessionService.CajaException e = assertThrows(CashSessionService.CajaException.class,
+                () -> servicio.cerrar(TURNO, JEFE));
+        assertTrue(e.getMessage().contains("no es tuya"), e.getMessage());
+
+        // Y sin identificar a quien llama no se cierra nada: dejarlo pasar
+        // convertiría un fallo de autenticación en permiso para cerrar
+        // cualquier caja.
+        assertThrows(CashSessionService.CajaException.class, () -> servicio.cerrar(TURNO, null));
+
+        assertEquals(CashSession.CERRADA, servicio.cerrar(TURNO, CAJERO).getStatus());
+    }
+
+    @Test
     @DisplayName("el cajero no abre hasta que lo habilitan")
     void sinHabilitarNoAbre() {
         turno(CashSession.FONDO_ASIGNADO, 300);

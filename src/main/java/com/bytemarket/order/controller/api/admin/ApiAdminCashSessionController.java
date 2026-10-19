@@ -61,14 +61,18 @@ public class ApiAdminCashSessionController {
      * acabado», no «esto es lo que hay». Contar es del encargado.
      */
     @PostMapping("/cerrar")
-    public ResponseEntity<?> cerrar(@RequestBody(required = false) Map<String, Object> body) {
+    public ResponseEntity<?> cerrar() {
         try {
+            /*
+             * Sin cuerpo: cierra SU turno, el que encuentra por su id de
+             * usuario. Aceptaba un `sessionId` opcional y no servía para
+             * nada bueno —el servicio rechaza el de otro igualmente— pero
+             * invitaba a probar con ids ajenos y dejaba la ruta dependiendo
+             * de dos fuentes de verdad para decir de qué caja se habla.
+             */
             Long yo = usuarioId();
             CashSession mio = cashSessionService.turnoDe(yo);
-            Integer id = body != null && body.get("sessionId") != null
-                    ? idDeSesion(body.get("sessionId"))
-                    : (mio == null ? null : mio.getId());
-            CashSession s = cashSessionService.cerrar(id, yo);
+            CashSession s = cashSessionService.cerrar(mio == null ? null : mio.getId(), yo);
             return ResponseEntity.ok(cashSessionService.resumen(s));
         } catch (CashSessionService.CajaException e) {
             return error(e);
