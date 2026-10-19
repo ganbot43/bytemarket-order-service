@@ -172,6 +172,21 @@ resilience4j:
 
 # Valores por defecto para cuando se arranca sin el perfil local (el perfil
 # local define los reales en application-local.yml).
+# ─────────────────────────────────────────────────────────────
+# Boletas de venta
+#
+# La serie con la que se numeran los comprobantes del mostrador.
+# En una tienda con varias cajas, cada punto de venta suele llevar
+# la suya: con una sola compartida, dos cajeros se pelean por el
+# mismo contador y uno de los dos espera en cada cobro.
+#
+# Cambiarla en caliente empieza un correlativo nuevo desde 1; la
+# serie anterior se queda con sus números y no se mezclan.
+# ─────────────────────────────────────────────────────────────
+bytemarket:
+  boleta:
+    serie: ${BOLETA_SERIE:B001}
+
 jwt:
   secret: ${JWT_SECRET:}
   expiration: ${JWT_EXPIRATION:86400000}

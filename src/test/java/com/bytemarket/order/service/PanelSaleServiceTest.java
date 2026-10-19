@@ -39,6 +39,7 @@ class PanelSaleServiceTest {
     private CashSessionService cashSessionService;
     private StockPublisher stockPublisher;
     private PedidoEventPublisher pedidoEventPublisher;
+    private BoletaService boletaService;
     private PanelSaleService service;
 
     @BeforeEach
@@ -58,8 +59,11 @@ class PanelSaleServiceTest {
         turno.setId(1);
         when(cashSessionService.exigirAbierta(any())).thenReturn(turno);
 
+        // La boleta tiene sus propias pruebas en BoletaServiceTest; aquí
+        // solo hace falta que la venta cobrada pase por ella.
+        boletaService = mock(BoletaService.class);
         service = new PanelSaleService(orderRepository, statusLogRepository, paymentMethodRepository,
-                cartService, cashSessionService, stockPublisher, pedidoEventPublisher);
+                cartService, cashSessionService, boletaService, stockPublisher, pedidoEventPublisher);
 
         when(orderRepository.findByOrderCode(anyString())).thenReturn(Optional.empty());
         when(orderRepository.save(any(Order.class))).thenAnswer(i -> {
@@ -89,6 +93,23 @@ class PanelSaleServiceTest {
         return new PanelSaleService.Peticion("caja", null, null, null, null, null, null,
                 List.of(new PanelSaleService.LineaDeVenta(4, 1, 60.0)),
                 aMano, null, "efectivo", null, null, null);
+    }
+
+    @Test
+    @DisplayName("una venta de caja sale con su boleta; un pedido por cobrar, no")
+    void laBoletaAcompanaAlDinero() {
+        service.registrar(caja(60.0, 1, null), 3L, "admin");
+        verify(boletaService).asignar(any(Order.class));
+
+        // El comprobante acompaña al cobro, no al apunte: emitir uno por
+        // algo que nadie ha pagado es un papel que luego hay que anular.
+        clearInvocations(boletaService);
+        PanelSaleService.Peticion porCobrar = new PanelSaleService.Peticion(
+                "whatsapp", "Ana", null, null, null, null, null,
+                List.of(new PanelSaleService.LineaDeVenta(4, 1, 60.0)),
+                0d, null, "yape", "pending", null, null);
+        service.registrar(porCobrar, 3L, "admin");
+        verify(boletaService, never()).asignar(any(Order.class));
     }
 
     @Test

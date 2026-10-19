@@ -19,14 +19,39 @@ public class DatabaseSeeder implements CommandLineRunner {
 
     private final IPaymentMethodRepository paymentMethodRepository;
 
+    private final com.bytemarket.order.repository.IBoletaSerieRepository boletaSerieRepository;
+
+    /** La serie con la que se emiten las boletas. */
+    @org.springframework.beans.factory.annotation.Value("${bytemarket.boleta.serie:B001}")
+    private String serieDeBoleta;
+
     private final CouponRepository couponRepository;
 
     @Override
     public void run(String... args) {
         System.out.println("🌱 Iniciando seed de ByteMarket (order-service)...");
         seedPaymentMethods();
+        seedSerieDeBoletas();
         seedCoupons();
         System.out.println("✅ Seed de order-service completado.");
+    }
+
+    /**
+     * Crea el contador de la serie si no está.
+     *
+     * Podría crearlo la primera venta, pero entonces dos cobros
+     * simultáneos el día del estreno intentarían crear la misma fila y uno
+     * de los dos se llevaría un error de clave duplicada. Dejarlo hecho
+     * desde el arranque quita ese caso de en medio.
+     */
+    private void seedSerieDeBoletas() {
+        if (!boletaSerieRepository.existsById(serieDeBoleta)) {
+            com.bytemarket.order.model.BoletaSerie serie = new com.bytemarket.order.model.BoletaSerie();
+            serie.setSerie(serieDeBoleta);
+            serie.setLastNumber(0);
+            boletaSerieRepository.save(serie);
+            System.out.println("🧾 Serie de boletas " + serieDeBoleta + " lista.");
+        }
     }
 
     private void seedPaymentMethods() {

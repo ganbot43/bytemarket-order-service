@@ -82,6 +82,7 @@ public class PanelSaleService {
     private final IPaymentMethodRepository paymentMethodRepository;
     private final CartService cartService;
     private final CashSessionService cashSessionService;
+    private final BoletaService boletaService;
     private final StockPublisher stockPublisher;
     private final PedidoEventPublisher pedidoEventPublisher;
 
@@ -190,6 +191,16 @@ public class PanelSaleService {
         boolean pagado = esCaja || "paid".equals(texto(p.paymentStatus()));
         order.setPaymentStatus(pagado ? "paid" : "pending");
         order.setStatus(esCaja ? "delivered" : (pagado ? "payment_validated" : "pending"));
+
+        /*
+         * La boleta se emite con el cobro, no con el apunte.
+         *
+         * Una venta de mostrador nace cobrada, así que sale con su número.
+         * Un pedido por WhatsApp que todavía está por cobrar, no: el
+         * comprobante acompaña al dinero, y emitir uno por algo que nadie
+         * ha pagado es un papel que luego hay que anular.
+         */
+        if (pagado) boletaService.asignar(order);
 
         order.setCreatedAt(LocalDateTime.now());
         order.setUpdatedAt(LocalDateTime.now());

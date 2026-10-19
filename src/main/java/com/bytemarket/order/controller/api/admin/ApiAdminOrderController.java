@@ -111,6 +111,9 @@ public class ApiAdminOrderController {
             Map<String, Object> resp = new LinkedHashMap<>();
             resp.put("id", o.getId());
             resp.put("orderCode", o.getOrderCode());
+            // El comprobante del cliente. Va null mientras la venta esté
+            // por cobrar: la boleta acompaña al dinero.
+            resp.put("boleta", o.numeroDeBoleta());
             resp.put("total", o.getTotal());
             resp.put("subtotal", o.getSubtotal());
             resp.put("discountApplied", o.getDiscountApplied());

@@ -117,6 +117,28 @@ public class Order {
     @Column(name = "voucher_number", length = 60)
     private String voucherNumber;
 
+    /**
+     * La boleta de venta: serie y correlativo.
+     *
+     * Es el comprobante que se lleva el cliente, y va en la venta y no en
+     * una tabla aparte porque pertenece a ella: una venta tiene una boleta
+     * y una boleta es de una venta.
+     *
+     * Se asigna cuando la venta está cobrada. Un pedido por WhatsApp que
+     * todavía no se ha pagado no lleva boleta: el comprobante acompaña al
+     * cobro, no al apunte.
+     *
+     * Y no se reutiliza. Si la venta se anula, su número se queda con ella
+     * —lo que corresponde es una nota de crédito, no reciclar el
+     * correlativo—: un número que vuelve a salir deja dos papeles distintos
+     * diciendo ser el mismo comprobante.
+     */
+    @Column(name = "boleta_serie", length = 10)
+    private String boletaSerie;
+
+    @Column(name = "boleta_numero")
+    private Integer boletaNumero;
+
     @Column(length = 30, nullable = false)
     private String status = "pending";
 
@@ -252,4 +274,18 @@ public class Order {
     @org.hibernate.annotations.BatchSize(size = 25)
     @OrderBy("createdAt DESC")
     private java.util.List<OrderStatusLog> statusLogs;
+
+    /**
+     * La boleta tal como se imprime: B001-00000123. Null si no tiene.
+     *
+     * Se expone ya formateada, igual que `canal`: si cada pantalla juntara
+     * la serie y el número por su cuenta, una acabaría rellenando con
+     * ceros a seis dígitos y otra a ocho, y serían dos comprobantes
+     * distintos sobre el papel.
+     */
+    @com.fasterxml.jackson.annotation.JsonProperty("boleta")
+    public String numeroDeBoleta() {
+        if (boletaSerie == null || boletaNumero == null) return null;
+        return boletaSerie + "-" + String.format("%08d", boletaNumero);
+    }
 }
