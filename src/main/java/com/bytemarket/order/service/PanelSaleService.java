@@ -102,7 +102,9 @@ public class PanelSaleService {
             String couponCode,
             String paymentType,
             String paymentStatus,
-            Double cashReceived) {}
+            Double cashReceived,
+            /** Nº de operación del voucher: lo que se contrasta al cuadrar. */
+            String voucherNumber) {}
 
     /** El resultado, con lo que la pantalla necesita para pintar el ticket. */
     public record Resultado(Order order, Double change) {}
@@ -176,6 +178,11 @@ public class PanelSaleService {
 
         aplicarFormaDePago(order, p.paymentType());
         aplicarEfectivo(order, p.paymentType(), p.cashReceived(), total);
+        // El nº de operación solo tiene sentido donde hay voucher: en
+        // efectivo el comprobante del cajero es el propio dinero.
+        if (!"efectivo".equals(order.getPaymentMethodType())) {
+            order.setVoucherNumber(texto(p.voucherNumber()));
+        }
 
         // La caja cobra y entrega en el acto. Para los demás canales lo dice
         // quien registra, porque un pedido por WhatsApp puede estar pagado y

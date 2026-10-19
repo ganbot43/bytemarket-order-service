@@ -81,14 +81,14 @@ class PanelSaleServiceTest {
     private PanelSaleService.Peticion caja(double precio, int cantidad, Double efectivo) {
         return new PanelSaleService.Peticion("caja", null, null, null, null, null, null,
                 List.of(new PanelSaleService.LineaDeVenta(4, cantidad, precio)),
-                0d, null, "efectivo", null, efectivo);
+                0d, null, "efectivo", null, efectivo, null);
     }
 
     /** La misma venta, pero quien cobra es el cajero. */
     private PanelSaleService.Peticion conDescuento(double aMano) {
         return new PanelSaleService.Peticion("caja", null, null, null, null, null, null,
                 List.of(new PanelSaleService.LineaDeVenta(4, 1, 60.0)),
-                aMano, null, "efectivo", null, null);
+                aMano, null, "efectivo", null, null, null);
     }
 
     @Test
@@ -196,7 +196,7 @@ class PanelSaleServiceTest {
         PanelSaleService.Peticion sinNombre = new PanelSaleService.Peticion(
                 "whatsapp", null, "987654321", null, null, null, null,
                 List.of(new PanelSaleService.LineaDeVenta(4, 1, 50.0)),
-                0d, null, "yape", "pending", null);
+                0d, null, "yape", "pending", null, null);
 
         CartService.CartException e = assertThrows(CartService.CartException.class,
                 () -> service.registrar(sinNombre, 3L, "admin"));
@@ -209,7 +209,7 @@ class PanelSaleServiceTest {
         PanelSaleService.Peticion porCobrar = new PanelSaleService.Peticion(
                 "whatsapp", "Ana Quispe", "987654321", null, null, null, null,
                 List.of(new PanelSaleService.LineaDeVenta(4, 1, 50.0)),
-                0d, null, "yape", "pending", null);
+                0d, null, "yape", "pending", null, null);
 
         Order o = service.registrar(porCobrar, 3L, "admin").order();
 
@@ -225,7 +225,7 @@ class PanelSaleServiceTest {
         PanelSaleService.Peticion regalado = new PanelSaleService.Peticion(
                 "caja", null, null, null, null, null, null,
                 List.of(new PanelSaleService.LineaDeVenta(4, 1, 50.0)),
-                999d, null, "efectivo", null, null);
+                999d, null, "efectivo", null, null, null);
 
         Order o = service.registrar(regalado, 3L, "admin").order();
 
@@ -242,7 +242,7 @@ class PanelSaleServiceTest {
         PanelSaleService.Peticion conCupon = new PanelSaleService.Peticion(
                 "caja", null, null, null, null, null, null,
                 List.of(new PanelSaleService.LineaDeVenta(4, 1, 100.0)),
-                5d, "VERANO", "efectivo", null, null);
+                5d, "VERANO", "efectivo", null, null, null);
 
         Order o = service.registrar(conCupon, 3L, "admin").order();
 
@@ -258,7 +258,7 @@ class PanelSaleServiceTest {
                 "caja", null, null, null, null, null, null,
                 List.of(new PanelSaleService.LineaDeVenta(4, 2, 50.0),
                         new PanelSaleService.LineaDeVenta(4, 3, 50.0)),
-                0d, null, "efectivo", null, null);
+                0d, null, "efectivo", null, null, null);
 
         Order o = service.registrar(repetido, 3L, "admin").order();
 
@@ -273,7 +273,7 @@ class PanelSaleServiceTest {
     void exigeAlMenosUnProducto() {
         PanelSaleService.Peticion vacia = new PanelSaleService.Peticion(
                 "caja", null, null, null, null, null, null, List.of(),
-                0d, null, "efectivo", null, null);
+                0d, null, "efectivo", null, null, null);
 
         assertThrows(CartService.CartException.class, () -> service.registrar(vacia, 3L, "admin"));
         verify(orderRepository, never()).save(any());
@@ -285,7 +285,7 @@ class PanelSaleServiceTest {
         PanelSaleService.Peticion rara = new PanelSaleService.Peticion(
                 "caja", null, null, null, null, null, null,
                 List.of(new PanelSaleService.LineaDeVenta(4, 1, 50.0)),
-                0d, null, "trueque", null, null);
+                0d, null, "trueque", null, null, null);
 
         assertThrows(CartService.CartException.class, () -> service.registrar(rara, 3L, "admin"));
     }
@@ -296,7 +296,7 @@ class PanelSaleServiceTest {
         PanelSaleService.Peticion rara = new PanelSaleService.Peticion(
                 "paloma-mensajera", "Ana", null, null, null, null, null,
                 List.of(new PanelSaleService.LineaDeVenta(4, 1, 50.0)),
-                0d, null, "efectivo", null, null);
+                0d, null, "efectivo", null, null, null);
 
         assertThrows(CartService.CartException.class, () -> service.registrar(rara, 3L, "admin"));
     }

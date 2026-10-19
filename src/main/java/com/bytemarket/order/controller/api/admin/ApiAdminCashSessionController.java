@@ -16,17 +16,18 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * El turno de caja: aperturarlo, moverlo, arquearlo y consultarlo.
+ * El turno de caja: asignar el fondo, abrir, mover, arquear, cerrar y
+ * cuadrar.
  *
- * Quién puede llamar a qué lo decide SecurityConfig, y la lista es corta:
- * al cajero solo le deja GET /sesion. Aperturar, mover efectivo y arquear
- * son del jefe de ventas o del encargado, porque quien vende no cuadra su
- * propio cajón.
+ * Quién puede llamar a qué lo decide SecurityConfig, y la lista es corta.
+ * El cajero solo tiene tres cosas: ver su turno, abrirlo y cerrarlo. Todo
+ * lo demás —entregar el fondo, mover el efectivo, arquear y cuadrar— es del
+ * jefe de ventas o del encargado, porque quien vende no cuenta su propio
+ * cajón.
  *
- * Por eso /sesion cuelga del usuario del token y no de un id del cuerpo —la
- * caja es de quien cobra con ella—, mientras que aperturar, mover y cerrar
- * llevan a quién o a cuál se refieren: el encargado no actúa sobre su caja
- * sino sobre la de otro.
+ * Por eso /sesion, /abrir y /cerrar cuelgan del usuario del token —la caja
+ * es de quien cobra con ella— mientras que lo del jefe lleva siempre a qué
+ * turno se refiere: él no actúa sobre su caja sino sobre la de otro.
  */
 @RestController
 @RequestMapping("/api/admin/caja")
@@ -36,42 +37,96 @@ public class ApiAdminCashSessionController {
     private final CashSessionService cashSessionService;
     private final ICashSessionRepository sessionRepository;
 
-    /** Lo que la pantalla del cajero pregunta al cargar: ¿tengo caja abierta? */
+    // ─── El cajero ──────────────────────────────────────────────
+
+    /** Su turno, en el estado que esté. Es lo que mira su pantalla. */
     @GetMapping("/sesion")
     public Map<String, Object> sesionActual() {
-        return cashSessionService.resumen(cashSessionService.abiertaDe(usuarioId()));
+        return cashSessionService.resumen(cashSessionService.turnoDe(usuarioId()));
+    }
+
+    /** Confirma la apertura y acepta el fondo. El ticket lo firma él. */
+    @PostMapping("/abrir")
+    public ResponseEntity<?> abrir() {
+        try {
+            CashSession s = cashSessionService.abrir(usuarioId());
+            return ResponseEntity.status(HttpStatus.CREATED).body(cashSessionService.resumen(s));
+        } catch (CashSessionService.CajaException e) {
+            return error(e);
+        }
     }
 
     /**
-     * Las cajas abiertas ahora mismo, para el encargado.
-     *
-     * Van sin importes mientras están abiertas: el motivo está en
-     * {@link CashSessionService#paraArqueo}.
+     * Cierra su turno al acabar. No declara ninguna cifra: cerrar es «he
+     * acabado», no «esto es lo que hay». Contar es del encargado.
      */
-    @GetMapping("/sesiones/abiertas")
-    public Map<String, Object> abiertas() {
-        List<Map<String, Object>> data = cashSessionService.abiertas().stream()
-                .map(cashSessionService::paraArqueo).toList();
+    @PostMapping("/cerrar")
+    public ResponseEntity<?> cerrar(@RequestBody(required = false) Map<String, Object> body) {
+        try {
+            Long yo = usuarioId();
+            CashSession mio = cashSessionService.turnoDe(yo);
+            Integer id = body != null && body.get("sessionId") != null
+                    ? idDeSesion(body.get("sessionId"))
+                    : (mio == null ? null : mio.getId());
+            CashSession s = cashSessionService.cerrar(id, yo);
+            return ResponseEntity.ok(cashSessionService.resumen(s));
+        } catch (CashSessionService.CajaException e) {
+            return error(e);
+        }
+    }
+
+    // ─── El jefe de ventas ──────────────────────────────────────
+
+    /**
+     * Los turnos vivos, con sus importes.
+     *
+     * Aquí sí van las cifras: es la pantalla con la que el encargado hace
+     * el arqueo sorpresivo —mira cuánto lleva vendido el cajero en efectivo
+     * y con eso se pone a contar billetes—. El vigilado es el cajero, y el
+     * cajero no ve esta pantalla.
+     */
+    @GetMapping("/sesiones/activas")
+    public Map<String, Object> activas() {
+        List<Map<String, Object>> data = cashSessionService.vivos().stream()
+                .map(cashSessionService::paraElJefe).toList();
         return Map.of("data", data, "total", data.size());
     }
 
+    /** Alias del anterior: la pantalla antigua lo pedía con este nombre. */
+    @GetMapping("/sesiones/abiertas")
+    public Map<String, Object> abiertas() {
+        return activas();
+    }
+
     /**
-     * Apertura la caja de un cajero y le entrega el fondo.
+     * Registra el fondo de un cajero y lo habilita para abrir.
      *
-     * `cashierName` es solo la etiqueta que se imprime en el papel; lo que
-     * identifica al cajero es `cashierId`, y ningún permiso se decide con
-     * el nombre.
+     * `cashierName` y `cashierDni` son solo las etiquetas que se imprimen
+     * en los papeles; lo que identifica al cajero es `cashierId`, y ningún
+     * permiso se decide con el nombre.
      */
-    @PostMapping("/abrir")
-    public ResponseEntity<?> abrir(@RequestBody Map<String, Object> body) {
+    @PostMapping("/asignar-fondo")
+    public ResponseEntity<?> asignarFondo(@RequestBody Map<String, Object> body) {
         try {
-            CashSession s = cashSessionService.abrir(
+            CashSession s = cashSessionService.asignarFondo(
                     usuarioId(),
                     usuarioNombre(),
                     entero(body.get("cashierId")),
-                    body.get("cashierName") == null ? null : body.get("cashierName").toString(),
-                    decimal(body.get("openingFloat")));
-            return ResponseEntity.status(HttpStatus.CREATED).body(cashSessionService.resumen(s));
+                    texto(body.get("cashierName")),
+                    texto(body.get("cashierDni")),
+                    decimal(body.get("openingFloat")),
+                    !Boolean.FALSE.equals(body.get("habilitar")));
+            return ResponseEntity.status(HttpStatus.CREATED).body(cashSessionService.paraElJefe(s));
+        } catch (CashSessionService.CajaException e) {
+            return error(e);
+        }
+    }
+
+    @PostMapping("/{id}/habilitar")
+    public ResponseEntity<?> habilitar(@PathVariable Integer id) {
+        try {
+            return ResponseEntity.ok(cashSessionService.paraElJefe(
+                    cashSessionService.habilitar(id, usuarioId())));
         } catch (CashSessionService.CajaException e) {
             return error(e);
         }
@@ -86,40 +141,65 @@ public class ApiAdminCashSessionController {
                     usuarioId(),
                     String.valueOf(body.get("type")),
                     decimal(body.get("amount")),
-                    body.get("reason") == null ? null : body.get("reason").toString());
-            return ResponseEntity.ok(cashSessionService.paraArqueo(
+                    texto(body.get("reason")));
+            return ResponseEntity.ok(cashSessionService.paraElJefe(
                     sessionRepository.findById(sessionId).orElseThrow()));
         } catch (CashSessionService.CajaException e) {
             return error(e);
         }
     }
 
-    /**
-     * Cierra con el arqueo. El cuerpo trae lo CONTADO de cada forma, no lo
-     * esperado: la pantalla no enseña ningún esperado hasta después de esta
-     * llamada.
-     */
-    @PostMapping("/cerrar")
-    public ResponseEntity<?> cerrar(@RequestBody Map<String, Object> body) {
+    /** Arqueo sorpresivo. No cierra la caja: el cajero sigue vendiendo. */
+    @PostMapping("/{id}/arqueo")
+    public ResponseEntity<?> arqueo(@PathVariable Integer id, @RequestBody Map<String, Object> body) {
         try {
-            CashSession s = cashSessionService.cerrar(
-                    idDeSesion(body.get("sessionId")),
-                    usuarioId(),
-                    contado(body.get("counted")),
-                    body.get("notes") == null ? null : body.get("notes").toString());
-            return ResponseEntity.ok(cashSessionService.resumen(s));
+            cashSessionService.arquear(id, usuarioId(), usuarioNombre(),
+                    decimal(body.get("countedCash")), texto(body.get("observation")));
+            return ResponseEntity.ok(cashSessionService.paraElJefe(
+                    sessionRepository.findById(id).orElseThrow()));
         } catch (CashSessionService.CajaException e) {
             return error(e);
         }
     }
 
-    /** El histórico de turnos cerrados, para el reporte. */
+    /** Lo que el jefe necesita para cuadrar: esperados y vouchers. */
+    @GetMapping("/{id}/cuadre")
+    public ResponseEntity<?> datosDeCuadre(@PathVariable Integer id) {
+        return sessionRepository.findById(id)
+                .<ResponseEntity<?>>map(s -> ResponseEntity.ok(cashSessionService.paraElJefe(s)))
+                .orElseGet(() -> ResponseEntity.status(404)
+                        .body(Map.of("statusCode", 404, "message", "Esa caja no existe")));
+    }
+
+    /**
+     * Cuadra el turno y deja el papel listo para firmar.
+     *
+     * El cuerpo trae lo CONTADO de cada forma y cuántos vouchers hay de
+     * cada una; si algo no cuadra, la observación es obligatoria.
+     */
+    @PostMapping("/{id}/cuadrar")
+    public ResponseEntity<?> cuadrar(@PathVariable Integer id, @RequestBody Map<String, Object> body) {
+        try {
+            CashSession s = cashSessionService.cuadrar(
+                    id,
+                    usuarioId(),
+                    usuarioNombre(),
+                    contado(body.get("counted")),
+                    vouchers(body.get("vouchers")),
+                    texto(body.get("observation")));
+            return ResponseEntity.ok(cashSessionService.paraElJefe(s));
+        } catch (CashSessionService.CajaException e) {
+            return error(e);
+        }
+    }
+
+    /** El histórico de turnos cuadrados, para el reporte. */
     @GetMapping("/sesiones")
     public Map<String, Object> sesiones(@RequestParam(defaultValue = "10") int limit,
                                         @RequestParam(defaultValue = "0") int offset) {
         int tamano = Math.max(1, Math.min(100, limit));
         Page<CashSession> page = sessionRepository.findByStatusOrderByClosedAtDesc(
-                CashSession.CERRADA, PageRequest.of(offset / tamano, tamano));
+                CashSession.CUADRADA, PageRequest.of(offset / tamano, tamano));
 
         List<Map<String, Object>> data = page.getContent().stream()
                 .map(cashSessionService::resumen).toList();
@@ -129,6 +209,8 @@ public class ApiAdminCashSessionController {
         resp.put("total", page.getTotalElements());
         return resp;
     }
+
+    // ─── Fontanería ────────────────────────────────────────────
 
     private static Long usuarioId() {
         return CurrentUser.get().map(u -> u.id()).orElse(null);
@@ -142,7 +224,7 @@ public class ApiAdminCashSessionController {
      * El id del turno sobre el que se actúa.
      *
      * Si falta o no es un número se rechaza en vez de caer a null: el
-     * servicio lo tomaría por "falta decir de qué caja", que es cierto pero
+     * servicio lo tomaría por «falta decir de qué caja», que es cierto pero
      * no dice que el dato venía mal.
      */
     private static Integer idDeSesion(Object v) {
@@ -166,6 +248,29 @@ public class ApiAdminCashSessionController {
             }
         }
         return out;
+    }
+
+    /** Cuántos vouchers hay de cada forma: {"tarjeta": 15, "yape": 4}. */
+    private static Map<String, Integer> vouchers(Object v) {
+        Map<String, Integer> out = new LinkedHashMap<>();
+        if (v instanceof Map<?, ?> m) {
+            for (Map.Entry<?, ?> e : m.entrySet()) {
+                if (e.getKey() == null || e.getValue() == null) continue;
+                try {
+                    out.put(e.getKey().toString(), Integer.parseInt(e.getValue().toString().trim()));
+                } catch (NumberFormatException ignorado) {
+                    throw new CashSessionService.CajaException(
+                            "El número de vouchers de " + e.getKey() + " no es un número entero");
+                }
+            }
+        }
+        return out;
+    }
+
+    private static String texto(Object v) {
+        if (v == null) return null;
+        String s = v.toString().trim();
+        return s.isEmpty() ? null : s;
     }
 
     private static Long entero(Object v) {

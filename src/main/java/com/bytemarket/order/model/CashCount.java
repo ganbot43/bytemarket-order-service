@@ -69,4 +69,15 @@ public class CashCount {
     /** Cuántas ventas del turno fueron por esta forma. Para el papel. */
     @Column(name = "sales_count")
     private Integer salesCount = 0;
+
+    /**
+     * Cuántos vouchers físicos contó el encargado.
+     *
+     * Cuadrar solo el importe no basta: quince ventas con tarjeta tienen
+     * que ser quince vouchers en la mano. Si los montos cuadran pero
+     * faltan dos papeles, hay algo que explicar. En efectivo no aplica
+     * —el comprobante del cajero es el propio dinero— y se queda a null.
+     */
+    @Column(name = "vouchers_counted")
+    private Integer vouchersCounted;
 }

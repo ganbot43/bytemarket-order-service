@@ -102,6 +102,21 @@ public class Order {
     @Column(name = "voucher_url", columnDefinition = "TEXT")
     private String voucherUrl;
 
+    /**
+     * El número de operación del voucher, en las ventas de mostrador que no
+     * son en efectivo.
+     *
+     * Es lo que permite contrastar el papel con el sistema al cuadrar: el
+     * encargado tiene quince vouchers en la mano y el sistema dice quince
+     * ventas con tarjeta. Sin el número, cuadrar solo el importe deja
+     * pasar una venta cobrada dos veces por el mismo total.
+     *
+     * Distinto de `voucherUrl`, que es la foto del pago que sube el cliente
+     * en la tienda web.
+     */
+    @Column(name = "voucher_number", length = 60)
+    private String voucherNumber;
+
     @Column(length = 30, nullable = false)
     private String status = "pending";
 

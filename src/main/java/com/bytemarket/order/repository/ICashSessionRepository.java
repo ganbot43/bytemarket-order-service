@@ -27,8 +27,17 @@ public interface ICashSessionRepository extends JpaRepository<CashSession, Integ
      */
     Optional<CashSession> findFirstByCashierIdAndStatus(Long cashierId, String status);
 
-    /** Las cajas abiertas ahora mismo: lo que el encargado tiene que cuadrar. */
+    /** Las cajas en un estado concreto, de la más antigua a la más nueva. */
     List<CashSession> findByStatusOrderByOpenedAtAsc(String status);
+
+    /**
+     * Los turnos que siguen vivos: desde que se asigna el fondo hasta que
+     * se cuadran. Es lo que el encargado tiene delante en su pantalla.
+     */
+    List<CashSession> findByStatusInOrderByAssignedAtAsc(List<String> estados);
+
+    /** El turno vivo de un cajero, si lo tiene. Como mucho hay uno. */
+    Optional<CashSession> findFirstByCashierIdAndStatusIn(Long cashierId, List<String> estados);
 
     /**
      * La caja abierta, bloqueando su fila hasta el fin de la transacción.
@@ -88,7 +97,9 @@ public interface ICashSessionRepository extends JpaRepository<CashSession, Integ
     @Query(value = """
             SELECT COALESCE(o.payment_method_type, 'otro') AS forma,
                    COALESCE(SUM(o.total), 0)               AS importe,
-                   COUNT(*)                                AS ventas
+                   COUNT(*)                                AS ventas,
+                   SUM(CASE WHEN o.voucher_number IS NOT NULL
+                             AND o.voucher_number <> '' THEN 1 ELSE 0 END) AS vouchers
             FROM orders o
             WHERE o.cash_session_id = :sessionId AND o.status <> 'cancelled'
             GROUP BY COALESCE(o.payment_method_type, 'otro')
@@ -111,4 +122,29 @@ public interface ICashSessionRepository extends JpaRepository<CashSession, Integ
             WHERE cashier_id IS NULL
             """, nativeQuery = true)
     int rellenarCajeroDeTurnosAntiguos();
+
+    /**
+     * Traduce los turnos guardados cuando el jefe abría la caja él mismo.
+     *
+     * Entonces `opened_by` significaba «quien entregó el fondo», que es lo
+     * que ahora significa `assigned_by`; y `opened_at`, el momento de esa
+     * entrega. Copiarlos es la traducción fiel. Los turnos que ya estaban
+     * cerrados pasan a cuadrados, porque en aquel modelo cerrar y cuadrar
+     * eran la misma acción: dejarlos en `closed` los pondría en la cola del
+     * encargado pidiendo un cuadre que ya se hizo.
+     */
+    @Modifying
+    @Query(value = """
+            UPDATE cash_sessions
+            SET assigned_by      = COALESCE(assigned_by, opened_by),
+                assigned_by_name = COALESCE(assigned_by_name, opened_by_name),
+                assigned_at      = COALESCE(assigned_at, opened_at),
+                enabled_at       = COALESCE(enabled_at, opened_at),
+                settled_by       = COALESCE(settled_by, closed_by),
+                settled_by_name  = COALESCE(settled_by_name, opened_by_name),
+                settled_at       = COALESCE(settled_at, closed_at),
+                status           = CASE WHEN status = 'closed' THEN 'settled' ELSE status END
+            WHERE assigned_by IS NULL
+            """, nativeQuery = true)
+    int traducirTurnosDelModeloViejo();
 }

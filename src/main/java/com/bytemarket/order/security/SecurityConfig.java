@@ -54,8 +54,22 @@ public class SecurityConfig {
                 // Vender: es lo único que hace un cajero.
                 .requestMatchers(HttpMethod.POST, "/api/admin/orders")
                     .hasAnyRole("CAJERO", "JEFE_VENTAS", "ADMIN", "SUPERADMIN")
-                // Ver su propio turno. Abrir y cuadrar, no: eso es del jefe.
+                /*
+                 * Las tres cosas que hace el cajero con su caja: verla,
+                 * abrirla y cerrarla.
+                 *
+                 * Abrir es suyo porque esa confirmación es la que firma en
+                 * el ticket de apertura: es lo que convierte el fondo en
+                 * responsabilidad suya. Cerrar también, porque cerrar es
+                 * «he acabado el turno», no «esto es lo que hay».
+                 *
+                 * Contar no. Asignar el fondo, mover el efectivo, arquear y
+                 * cuadrar son del jefe: quien vende no cuenta su propio
+                 * cajón. Esas rutas caen en el comodín de abajo.
+                 */
                 .requestMatchers(HttpMethod.GET, "/api/admin/caja/sesion")
+                    .hasAnyRole("CAJERO", "JEFE_VENTAS", "ADMIN", "SUPERADMIN")
+                .requestMatchers(HttpMethod.POST, "/api/admin/caja/abrir", "/api/admin/caja/cerrar")
                     .hasAnyRole("CAJERO", "JEFE_VENTAS", "ADMIN", "SUPERADMIN")
                 /*
                  * El cajero NO lista pedidos.
@@ -74,7 +88,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/admin/orders/**")
                     .hasAnyRole("JEFE_VENTAS", "ADMIN", "SUPERADMIN")
 
-                // Fondos, movimientos y arqueo: del jefe de ventas.
+                // Fondos, movimientos, arqueo y cuadre: del jefe de ventas.
                 .requestMatchers("/api/admin/caja/**")
                     .hasAnyRole("JEFE_VENTAS", "ADMIN", "SUPERADMIN")
                 // Reportes: el jefe los necesita para cuadrar el día.

@@ -189,7 +189,8 @@ public class ApiAdminOrderController {
                 OrderService.texto(body.get("couponCode")),
                 OrderService.texto(body.get("paymentType")),
                 OrderService.texto(body.get("paymentStatus")),
-                decimal(body.get("cashReceived")));
+                decimal(body.get("cashReceived")),
+                OrderService.texto(body.get("voucherNumber")));
     }
 
     /** Un número mal escrito es un 400 con mensaje, no un 500. */

@@ -44,8 +44,36 @@ import java.time.LocalDateTime;
 })
 public class CashSession {
 
+    /**
+     * Los cinco estados del turno, en el orden en que ocurren.
+     *
+     *   fund_assigned  el jefe registró el fondo, el cajero aún no puede abrir
+     *   enabled        habilitado: el cajero ya puede confirmar la apertura
+     *   open           turno en curso; admite ventas y arqueos sorpresivos
+     *   closed         el cajero cerró; no admite más ventas
+     *   settled        el jefe contó y firmó el papel de caja
+     *
+     * Que sean cinco y no dos es lo que separa «dejo de vender» de «me
+     * cuentan el dinero». El cajero cierra su caja cuando acaba el turno; el
+     * cuadre es después, delante del encargado, y hasta que no ocurre el
+     * turno no está terminado. Con dos estados las dos cosas eran la misma,
+     * y entonces o el cajero declaraba su propio dinero o el jefe le cerraba
+     * la caja desde otra pantalla sin que él lo supiera.
+     *
+     * Asignar fondo y habilitar son dos estados pero una sola acción: el
+     * jefe entrega el dinero y con eso queda habilitado. Se guardan
+     * separados porque un día puede hacer falta preparar los fondos por la
+     * mañana y habilitar al abrir la tienda.
+     */
+    public static final String FONDO_ASIGNADO = "fund_assigned";
+    public static final String HABILITADA = "enabled";
     public static final String ABIERTA = "open";
     public static final String CERRADA = "closed";
+    public static final String CUADRADA = "settled";
+
+    /** Los estados en los que el turno sigue vivo y no se puede empezar otro. */
+    public static final java.util.List<String> VIVOS =
+            java.util.List.of(FONDO_ASIGNADO, HABILITADA, ABIERTA, CERRADA);
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -63,12 +91,42 @@ public class CashSession {
     @Column(name = "cashier_id")
     private Long cashierId;
 
-    /** El nombre del cajero, copiado al aperturar. Etiqueta, no permiso. */
+    /** El nombre del cajero, copiado al asignar el fondo. Etiqueta, no permiso. */
     @Column(name = "cashier_name", columnDefinition = "TEXT")
     private String cashierName;
 
-    /** Quién aperturó y entregó el fondo. El jefe de ventas o el encargado. */
-    @Column(name = "opened_by", nullable = false)
+    /**
+     * El DNI del cajero, copiado igual que el nombre.
+     *
+     * Va impreso en el ticket de apertura y en el papel de caja: un papel
+     * firmado que solo dice «Cajero» no identifica a nadie cuando hay dos
+     * con el mismo nombre de pila.
+     */
+    @Column(name = "cashier_dni", length = 20)
+    private String cashierDni;
+
+    /** Quién asignó el fondo y habilitó al cajero: el jefe o el encargado. */
+    @Column(name = "assigned_by")
+    private Long assignedBy;
+
+    @Column(name = "assigned_by_name", columnDefinition = "TEXT")
+    private String assignedByName;
+
+    @Column(name = "assigned_at")
+    private LocalDateTime assignedAt;
+
+    @Column(name = "enabled_at")
+    private LocalDateTime enabledAt;
+
+    /**
+     * Quién confirmó la apertura: el propio cajero.
+     *
+     * Antes era el jefe, porque era él quien abría. Ahora el jefe entrega el
+     * fondo y el cajero lo acepta: esa confirmación es la que firma en el
+     * ticket de apertura, y es lo que convierte el fondo en responsabilidad
+     * suya.
+     */
+    @Column(name = "opened_by")
     private Long openedBy;
 
     /**
@@ -81,7 +139,7 @@ public class CashSession {
     @Column(name = "opened_by_name", columnDefinition = "TEXT")
     private String openedByName;
 
-    @Column(name = "opened_at", nullable = false)
+    @Column(name = "opened_at")
     private LocalDateTime openedAt;
 
     /** El sencillo con el que se empieza, para poder dar vuelto. */
@@ -115,9 +173,26 @@ public class CashSession {
     @Column(name = "difference")
     private Double difference;
 
+    /**
+     * La observación del cuadre.
+     *
+     * Obligatoria cuando hay diferencia, en efectivo o en vouchers: un
+     * faltante sin explicar es un faltante que nadie va a poder reconstruir
+     * dentro de un mes.
+     */
     @Column(name = "closing_notes", columnDefinition = "TEXT")
     private String closingNotes;
 
+    /** Quién cuadró y cuándo: el jefe de ventas o el encargado. */
+    @Column(name = "settled_by")
+    private Long settledBy;
+
+    @Column(name = "settled_by_name", columnDefinition = "TEXT")
+    private String settledByName;
+
+    @Column(name = "settled_at")
+    private LocalDateTime settledAt;
+
     @Column(length = 20, nullable = false)
-    private String status = ABIERTA;
+    private String status = FONDO_ASIGNADO;
 }
