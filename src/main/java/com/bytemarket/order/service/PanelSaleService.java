@@ -133,7 +133,8 @@ public class PanelSaleService {
         double subtotal = redondear(lineas.stream().mapToDouble(OrderItem::getSubtotal).sum());
 
         // El descuento a mano y el cupón se suman, y juntos no pueden pasar
-        // del subtotal: un total negativo no significa nada.
+        // del subtotal: un total negativo no significa nada. En caja no hay
+        // cupón —es de la web— así que allí solo cuenta el de a mano.
         double aMano = redondear(Math.max(0d, p.discount() == null ? 0d : p.discount()));
         if (esCajero && aMano > 0) {
             // Un descuento a mano es dinero que la tienda deja de cobrar, y
@@ -142,7 +143,26 @@ public class PanelSaleService {
             throw new CartService.CartException(
                     "Un descuento lo autoriza tu jefe de ventas. Llámalo antes de cobrar.");
         }
-        CartService.AppliedCoupon cupon = cartService.applyCoupon(texto(p.couponCode()), subtotal);
+        /*
+         * En el mostrador no se aplican cupones: son de la tienda web.
+         *
+         * Un cupón se crea para una campaña y se reparte por un canal
+         * concreto; dejar que se tecleen en caja lo convierte en un
+         * descuento a mano con otro nombre, y además salta por encima de
+         * la regla de arriba —el cajero no descuenta— sin que nadie se
+         * entere.
+         *
+         * Se rechaza en vez de ignorarlo: si se tragara el código en
+         * silencio, el cajero cobraría el total completo creyendo que
+         * aplicó el descuento, y el cliente se iría pagando de más.
+         */
+        if (esCaja && texto(p.couponCode()) != null) {
+            throw new CartService.CartException(
+                    "Los cupones son de la tienda web. En caja no se aplican.");
+        }
+        CartService.AppliedCoupon cupon = esCaja
+                ? new CartService.AppliedCoupon(null, 0d)
+                : cartService.applyCoupon(texto(p.couponCode()), subtotal);
         double descuento = redondear(Math.min(aMano + cupon.discount(), subtotal));
         double total = redondear(subtotal - descuento);
 

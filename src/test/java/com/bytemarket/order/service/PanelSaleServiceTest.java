@@ -260,16 +260,37 @@ class PanelSaleServiceTest {
         when(cartService.applyCoupon(eq("VERANO"), anyDouble()))
                 .thenReturn(new CartService.AppliedCoupon("VERANO", 10d));
 
+        // Un pedido que llegó por WhatsApp: el cliente puede traer un
+        // código de la web, y ahí sí se le aplica.
         PanelSaleService.Peticion conCupon = new PanelSaleService.Peticion(
-                "caja", null, null, null, null, null, null,
+                "whatsapp", "Ana", null, null, null, null, null,
                 List.of(new PanelSaleService.LineaDeVenta(4, 1, 100.0)),
-                5d, "VERANO", "efectivo", null, null, null);
+                5d, "VERANO", "efectivo", "paid", null, null);
 
         Order o = service.registrar(conCupon, 3L, "admin").order();
 
         assertEquals(15.0, o.getDiscountApplied());
         assertEquals(85.0, o.getTotal());
         assertEquals("VERANO", o.getCouponCode());
+    }
+
+    @Test
+    @DisplayName("en el mostrador no se aplican cupones")
+    void laCajaNoLlevaCupon() {
+        PanelSaleService.Peticion conCupon = new PanelSaleService.Peticion(
+                "caja", null, null, null, null, null, null,
+                List.of(new PanelSaleService.LineaDeVenta(4, 1, 100.0)),
+                0d, "VERANO", "efectivo", null, null, null);
+
+        CartService.CartException e = assertThrows(CartService.CartException.class,
+                () -> service.registrar(conCupon, 3L, "admin"));
+
+        assertTrue(e.getMessage().contains("web"), e.getMessage());
+        // Se rechaza en vez de ignorarlo: tragarse el código en silencio
+        // haría que el cajero cobrara el total completo creyendo que
+        // aplicó el descuento, y el cliente se iría pagando de más.
+        verify(orderRepository, never()).save(any(Order.class));
+        verify(cartService, never()).applyCoupon(any(), anyDouble());
     }
 
     @Test
