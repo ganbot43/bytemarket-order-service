@@ -19,11 +19,14 @@ public class DatabaseSeeder implements CommandLineRunner {
 
     private final IPaymentMethodRepository paymentMethodRepository;
 
-    private final com.bytemarket.order.repository.IBoletaSerieRepository boletaSerieRepository;
+    private final com.bytemarket.order.repository.ISerieDocumentoRepository serieRepository;
 
     /** La serie con la que se emiten las boletas. */
     @org.springframework.beans.factory.annotation.Value("${bytemarket.boleta.serie:B001}")
     private String serieDeBoleta;
+
+    @org.springframework.beans.factory.annotation.Value("${bytemarket.voucher.serie:V001}")
+    private String serieDeVoucher;
 
     private final CouponRepository couponRepository;
 
@@ -45,12 +48,17 @@ public class DatabaseSeeder implements CommandLineRunner {
      * desde el arranque quita ese caso de en medio.
      */
     private void seedSerieDeBoletas() {
-        if (!boletaSerieRepository.existsById(serieDeBoleta)) {
-            com.bytemarket.order.model.BoletaSerie serie = new com.bytemarket.order.model.BoletaSerie();
-            serie.setSerie(serieDeBoleta);
+        crearSerie(serieDeBoleta, "boletas");
+        crearSerie(serieDeVoucher, "vouchers");
+    }
+
+    private void crearSerie(String nombre, String para) {
+        if (!serieRepository.existsById(nombre)) {
+            com.bytemarket.order.model.SerieDocumento serie = new com.bytemarket.order.model.SerieDocumento();
+            serie.setSerie(nombre);
             serie.setLastNumber(0);
-            boletaSerieRepository.save(serie);
-            System.out.println("🧾 Serie de boletas " + serieDeBoleta + " lista.");
+            serieRepository.save(serie);
+            System.out.println("🧾 Serie de " + para + " " + nombre + " lista.");
         }
     }
 

@@ -72,6 +72,24 @@ public class PanelSaleService {
             "tarjeta", "Tarjeta",
             "bank_transfer", "Transferencia bancaria");
 
+    /**
+     * Lo que se puede cobrar en el mostrador.
+     *
+     * Transferencia bancaria no: en caja el cliente está delante y se va
+     * con el producto, y una transferencia hay que esperar a verla en el
+     * banco. Eso es un pedido por cobrar, no una venta de mostrador, y
+     * dejarla aquí haría que el cuadre esperara un dinero que todavía no
+     * ha llegado.
+     *
+     * Yape y Plin son el QR, y solo aparecen los que de verdad existan en
+     * payment_methods y estén activos: ofrecer un QR que el negocio no
+     * tiene es mandar al cajero a cobrar a una cuenta que no es suya.
+     */
+    public static final List<String> FORMAS_DE_CAJA = List.of("efectivo", "tarjeta", "yape", "plin");
+
+    /** Las formas de QR: existen si el negocio las tiene dadas de alta. */
+    public static final List<String> FORMAS_QR = List.of("yape", "plin");
+
     /** El canal que de verdad pasa por el cajón. */
     private static final String ES_CAJA = "caja";
 
@@ -83,7 +101,7 @@ public class PanelSaleService {
     private final IPaymentMethodRepository paymentMethodRepository;
     private final CartService cartService;
     private final CashSessionService cashSessionService;
-    private final BoletaService boletaService;
+    private final NumeracionService numeracionService;
     private final StockPublisher stockPublisher;
     private final PedidoEventPublisher pedidoEventPublisher;
 
@@ -104,9 +122,7 @@ public class PanelSaleService {
             String couponCode,
             String paymentType,
             String paymentStatus,
-            Double cashReceived,
-            /** Nº de operación del voucher: lo que se contrasta al cuadrar. */
-            String voucherNumber) {}
+            Double cashReceived) {}
 
     /** El resultado, con lo que la pantalla necesita para pintar el ticket. */
     public record Resultado(Order order, Double change) {}
@@ -198,14 +214,8 @@ public class PanelSaleService {
         order.setDiscountApplied(descuento);
         order.setTotal(total);
 
-        aplicarFormaDePago(order, p.paymentType());
+        aplicarFormaDePago(order, p.paymentType(), esCaja);
         aplicarEfectivo(order, p.paymentType(), p.cashReceived(), total);
-        // El nº de operación solo tiene sentido donde hay voucher: en
-        // efectivo el comprobante del cajero es el propio dinero.
-        if (!"efectivo".equals(order.getPaymentMethodType())) {
-            order.setVoucherNumber(texto(p.voucherNumber()));
-        }
-
         // La caja cobra y entrega en el acto. Para los demás canales lo dice
         // quien registra, porque un pedido por WhatsApp puede estar pagado y
         // sin enviar, o enviado y pendiente de cobro.
@@ -221,7 +231,16 @@ public class PanelSaleService {
          * comprobante acompaña al dinero, y emitir uno por algo que nadie
          * ha pagado es un papel que luego hay que anular.
          */
-        if (pagado) boletaService.asignar(order);
+        /*
+         * El voucher primero y la boleta después, que es el orden en que
+         * salen por la impresora: el cliente paga, el POS confirma, se
+         * imprime el voucher de comercio —que firma y se queda el cajero—
+         * y encima va la boleta que se lleva él.
+         */
+        if (pagado) {
+            numeracionService.asignarVoucher(order);
+            numeracionService.asignarBoleta(order);
+        }
 
         order.setCreatedAt(LocalDateTime.now());
         order.setUpdatedAt(LocalDateTime.now());
@@ -329,10 +348,16 @@ public class PanelSaleService {
      * mañana cambia la cuenta, el pedido antiguo debe seguir mostrando la que
      * se le dio al cliente.
      */
-    private void aplicarFormaDePago(Order order, String tipo) {
+    private void aplicarFormaDePago(Order order, String tipo, boolean esCaja) {
         String forma = texto(tipo);
         if (forma == null || !FORMAS_DE_PAGO.containsKey(forma)) {
             throw new CartService.CartException("Elige una forma de pago");
+        }
+        if (esCaja && !FORMAS_DE_CAJA.contains(forma)) {
+            // Una transferencia hay que esperar a verla en el banco: eso es
+            // un pedido por cobrar, no una venta de mostrador.
+            throw new CartService.CartException("En caja no se cobra con "
+                    + FORMAS_DE_PAGO.get(forma).toLowerCase() + ". Regístralo como pedido.");
         }
 
         order.setPaymentMethodType(forma);

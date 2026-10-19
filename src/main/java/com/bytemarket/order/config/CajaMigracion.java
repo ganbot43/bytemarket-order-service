@@ -44,9 +44,34 @@ public class CajaMigracion implements CommandLineRunner {
             "ALTER TABLE cash_sessions MODIFY COLUMN opened_at datetime(6) NULL",
             "ALTER TABLE cash_sessions MODIFY COLUMN opened_by bigint NULL");
 
+    /**
+     * El contador de boletas cambió de casa.
+     *
+     * Nació como `boleta_series` y ahora lleva dos series —boletas y
+     * vouchers de comercio— así que la tabla es `document_series`.
+     * Hibernate crea la nueva pero no mueve una sola fila: sin esto, el
+     * correlativo volvería a empezar en 1 y saldrían dos boletas con el
+     * mismo número separadas por un despliegue.
+     */
+    private static final String MUDAR_SERIES = """
+            INSERT INTO document_series (serie, last_number)
+            SELECT serie, last_number FROM boleta_series
+            WHERE serie NOT IN (SELECT serie FROM document_series)
+            """;
+
     @Override
     @Transactional
     public void run(String... args) {
+        try {
+            int mudadas = entityManager.createNativeQuery(MUDAR_SERIES).executeUpdate();
+            if (mudadas > 0) {
+                System.out.println("🔁 Caja: " + mudadas + " serie(s) de numeración mudada(s) a document_series.");
+            }
+            entityManager.createNativeQuery("DROP TABLE boleta_series").executeUpdate();
+        } catch (Exception e) {
+            // La tabla vieja no existe: instalación nueva o ya migrada.
+        }
+
         for (String ddl : AFLOJAR) {
             try {
                 entityManager.createNativeQuery(ddl).executeUpdate();

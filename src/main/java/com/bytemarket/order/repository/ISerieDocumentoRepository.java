@@ -1,6 +1,6 @@
 package com.bytemarket.order.repository;
 
-import com.bytemarket.order.model.BoletaSerie;
+import com.bytemarket.order.model.SerieDocumento;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -11,7 +11,7 @@ import org.springframework.stereotype.Repository;
 import java.util.Optional;
 
 @Repository
-public interface IBoletaSerieRepository extends JpaRepository<BoletaSerie, String> {
+public interface ISerieDocumentoRepository extends JpaRepository<SerieDocumento, String> {
 
     /**
      * El contador de una serie, bloqueando su fila hasta el commit.
@@ -26,6 +26,6 @@ public interface IBoletaSerieRepository extends JpaRepository<BoletaSerie, Strin
      * unos milisegundos a que las dos pasen y rompan la numeración.
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT b FROM BoletaSerie b WHERE b.serie = :serie")
-    Optional<BoletaSerie> bloquear(@Param("serie") String serie);
+    @Query("SELECT b FROM SerieDocumento b WHERE b.serie = :serie")
+    Optional<SerieDocumento> bloquear(@Param("serie") String serie);
 }

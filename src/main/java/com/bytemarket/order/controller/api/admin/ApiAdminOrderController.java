@@ -32,6 +32,8 @@ public class ApiAdminOrderController {
     private final IOrderRepository orderRepository;
     private final OrderService orderService;
     private final PanelSaleService panelSaleService;
+    /** Para saber qué QR tiene dados de alta el negocio. */
+    private final com.bytemarket.order.repository.IPaymentMethodRepository paymentMethodRepository;
 
     @GetMapping
     public Map<String, Object> list(@RequestParam(defaultValue = "20") int limit,
@@ -114,6 +116,10 @@ public class ApiAdminOrderController {
             // El comprobante del cliente. Va null mientras la venta esté
             // por cobrar: la boleta acompaña al dinero.
             resp.put("boleta", o.numeroDeBoleta());
+            // El voucher de comercio, que se imprime ANTES que la boleta.
+            // Null en efectivo: ahí el comprobante del cajero es el dinero.
+            resp.put("voucher", o.getVoucherNumber());
+            resp.put("paymentType", o.getPaymentMethodType());
             resp.put("total", o.getTotal());
             resp.put("subtotal", o.getSubtotal());
             resp.put("discountApplied", o.getDiscountApplied());
@@ -156,6 +162,24 @@ public class ApiAdminOrderController {
                 .map(e -> Map.of("value", e.getKey(), "label", e.getValue()))
                 .sorted((a, b) -> a.get("label").compareTo(b.get("label")))
                 .toList());
+        /*
+         * Lo que se puede cobrar en el mostrador, que es menos.
+         *
+         * Transferencia no: el cliente está delante y se va con el
+         * producto, y una transferencia hay que esperar a verla en el
+         * banco. Y de los QR solo salen los que el negocio tenga dados de
+         * alta y activos —ofrecer un Yape que no existe es mandar al
+         * cajero a cobrar a una cuenta que no es suya—.
+         */
+        List<String> qrActivos = paymentMethodRepository.findAll().stream()
+                .filter(pm -> pm.getIsActive() != null && pm.getIsActive() == 1)
+                .map(pm -> pm.getType())
+                .filter(PanelSaleService.FORMAS_QR::contains)
+                .toList();
+        resp.put("cashPaymentTypes", PanelSaleService.FORMAS_DE_CAJA.stream()
+                .filter(t -> !PanelSaleService.FORMAS_QR.contains(t) || qrActivos.contains(t))
+                .map(t -> Map.of("value", t, "label", PanelSaleService.FORMAS_DE_PAGO.get(t)))
+                .toList());
         resp.put("channels", List.of(
                 Map.of("value", "whatsapp", "label", "WhatsApp"),
                 Map.of("value", "instagram", "label", "Instagram"),
@@ -192,8 +216,7 @@ public class ApiAdminOrderController {
                 OrderService.texto(body.get("couponCode")),
                 OrderService.texto(body.get("paymentType")),
                 OrderService.texto(body.get("paymentStatus")),
-                decimal(body.get("cashReceived")),
-                OrderService.texto(body.get("voucherNumber")));
+                decimal(body.get("cashReceived")));
     }
 
     /** Un número mal escrito es un 400 con mensaje, no un 500. */

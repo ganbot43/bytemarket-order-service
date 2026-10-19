@@ -173,9 +173,10 @@ resilience4j:
 # Valores por defecto para cuando se arranca sin el perfil local (el perfil
 # local define los reales en application-local.yml).
 # ─────────────────────────────────────────────────────────────
-# Boletas de venta
+# Numeración del mostrador
 #
-# La serie con la que se numeran los comprobantes del mostrador.
+# Dos series: las boletas que se lleva el cliente y los vouchers de
+# comercio que se queda el cajero.
 # En una tienda con varias cajas, cada punto de venta suele llevar
 # la suya: con una sola compartida, dos cajeros se pelean por el
 # mismo contador y uno de los dos espera en cada cobro.
@@ -186,6 +187,8 @@ resilience4j:
 bytemarket:
   boleta:
     serie: ${BOLETA_SERIE:B001}
+  voucher:
+    serie: ${VOUCHER_SERIE:V001}
 
 jwt:
   secret: ${JWT_SECRET:}
