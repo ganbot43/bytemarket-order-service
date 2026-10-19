@@ -150,6 +150,7 @@ public class ApiAdminCashSessionController {
             cashSessionService.registrarMovimiento(
                     sessionId,
                     usuarioId(),
+                    usuarioNombre(),
                     String.valueOf(body.get("type")),
                     decimal(body.get("amount")),
                     texto(body.get("reason")));

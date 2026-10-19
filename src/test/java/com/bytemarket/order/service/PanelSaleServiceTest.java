@@ -172,6 +172,13 @@ class PanelSaleServiceTest {
     }
 
     @Test
+    @DisplayName("la venta de caja queda apuntada en el historial del turno")
+    void laVentaEntraEnElHistorial() {
+        service.registrar(caja(50.0, 1, null), 3L, "admin");
+        verify(cashSessionService).apuntar(eq(1), eq("sale"), eq(3L), any(), contains("50"));
+    }
+
+    @Test
     @DisplayName("una venta de caja nace entregada y pagada")
     void laCajaCobraYEntrega() {
         Order o = service.registrar(caja(50.0, 1, null), 3L, "admin").order();

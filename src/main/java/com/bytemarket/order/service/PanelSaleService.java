@@ -2,6 +2,7 @@ package com.bytemarket.order.service;
 
 import com.bytemarket.order.messaging.PedidoEventPublisher;
 import com.bytemarket.order.messaging.StockPublisher;
+import com.bytemarket.order.model.CashLog;
 import com.bytemarket.order.model.CashSession;
 import com.bytemarket.order.model.Order;
 import com.bytemarket.order.model.OrderItem;
@@ -229,6 +230,15 @@ public class PanelSaleService {
 
         Order guardado = orderRepository.save(order);
         registrarLogs(guardado, canal, pagado, adminUserId);
+
+        // Y en el historial del turno, que es donde se reconstruye la
+        // mañana cuando el cuadre sale raro.
+        if (caja != null) {
+            cashSessionService.apuntar(caja.getId(), CashLog.VENTA, adminUserId, caja.getCashierName(),
+                    (guardado.numeroDeBoleta() == null ? guardado.getOrderCode() : guardado.numeroDeBoleta())
+                            + " · " + guardado.getPaymentMethodLabel()
+                            + " · S/ " + String.format("%.2f", guardado.getTotal()));
+        }
 
         // Misma cola que el checkout: una venta de mostrador descuenta stock
         // igual que una web, y el consumidor ya es idempotente.

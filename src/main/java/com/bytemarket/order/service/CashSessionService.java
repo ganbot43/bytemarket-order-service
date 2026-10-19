@@ -1,15 +1,18 @@
 package com.bytemarket.order.service;
 
 import com.bytemarket.order.model.CashAudit;
+import com.bytemarket.order.model.CashLog;
 import com.bytemarket.order.model.CashCount;
 import com.bytemarket.order.model.CashMovement;
 import com.bytemarket.order.model.CashSession;
 import com.bytemarket.order.repository.ICashAuditRepository;
+import com.bytemarket.order.repository.ICashLogRepository;
 import com.bytemarket.order.repository.ICashCountRepository;
 import com.bytemarket.order.repository.ICashMovementRepository;
 import com.bytemarket.order.repository.ICashSessionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
@@ -73,6 +76,27 @@ public class CashSessionService {
     private final ICashMovementRepository movementRepository;
     private final ICashCountRepository countRepository;
     private final ICashAuditRepository auditRepository;
+    private final ICashLogRepository logRepository;
+
+    /**
+     * Apunta un paso en el historial del turno.
+     *
+     * Se llama desde cada cosa que mueve la caja, y a propósito no devuelve
+     * nada ni lanza: el historial es para poder reconstruir la mañana, no
+     * una condición de la operación. Si un día falla la escritura, lo que
+     * no puede pasar es que se caiga el cobro por eso.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void apuntar(Integer sessionId, String accion, Long quien, String nombre, String detalle) {
+        if (sessionId == null) return;
+        CashLog l = new CashLog();
+        l.setSessionId(sessionId);
+        l.setAction(accion);
+        l.setUserId(quien);
+        l.setUserName(limpio(nombre));
+        l.setDetail(limpio(detalle));
+        logRepository.save(l);
+    }
 
     // ─── El turno de cada quien ─────────────────────────────────
 
@@ -164,7 +188,15 @@ public class CashSessionService {
         s.setOpeningFloat(redondear(fondo));
         s.setStatus(habilitar ? CashSession.HABILITADA : CashSession.FONDO_ASIGNADO);
         if (habilitar) s.setEnabledAt(ahora);
-        return sessionRepository.save(s);
+        CashSession guardado = sessionRepository.save(s);
+
+        apuntar(guardado.getId(), CashLog.ASIGNADO, quienAsigna, nombreQuienAsigna,
+                "Fondo de " + money(guardado.getOpeningFloat()) + " para " + guardado.getCashierName());
+        if (habilitar) {
+            apuntar(guardado.getId(), CashLog.HABILITADO, quienAsigna, nombreQuienAsigna,
+                    "Habilitado para abrir");
+        }
+        return guardado;
     }
 
     /** Habilita un turno al que ya se le había asignado el fondo. */
@@ -175,6 +207,7 @@ public class CashSessionService {
         s.setEnabledAt(LocalDateTime.now());
         s.setStatus(CashSession.HABILITADA);
         if (s.getAssignedBy() == null) s.setAssignedBy(quien);
+        apuntar(s.getId(), CashLog.HABILITADO, quien, s.getAssignedByName(), "Habilitado para abrir");
         return sessionRepository.save(s);
     }
 
@@ -207,14 +240,16 @@ public class CashSessionService {
         s.setOpenedBy(cajeroId);
         s.setOpenedAt(LocalDateTime.now());
         s.setStatus(CashSession.ABIERTA);
+        apuntar(s.getId(), CashLog.ABIERTO, cajeroId, s.getCashierName(),
+                "Aceptó el fondo de " + money(s.getOpeningFloat()));
         return sessionRepository.save(s);
     }
 
     // ─── 3. Movimientos de efectivo ─────────────────────────────
 
     @Transactional
-    public CashMovement registrarMovimiento(Integer sessionId, Long quien, String tipo,
-                                            double importe, String motivo) {
+    public CashMovement registrarMovimiento(Integer sessionId, Long quien, String nombreQuien,
+                                            String tipo, double importe, String motivo) {
         CashSession s = exigirEstado(sessionId, CashSession.ABIERTA,
                 "Solo se mueve el efectivo de una caja abierta.");
         if (!List.of(CashMovement.INGRESO, CashMovement.RETIRO, CashMovement.GASTO).contains(tipo)) {
@@ -239,7 +274,10 @@ public class CashSessionService {
         m.setAmount(redondear(importe));
         m.setReason(motivo.trim());
         m.setCreatedBy(quien);
-        return movementRepository.save(m);
+        CashMovement guardado = movementRepository.save(m);
+        apuntar(s.getId(), CashLog.MOVIMIENTO, quien, nombreQuien,
+                etiquetaMovimiento(tipo) + " de " + money(importe) + " · " + motivo.trim());
+        return guardado;
     }
 
     // ─── 4. Arqueo sorpresivo ───────────────────────────────────
@@ -279,7 +317,11 @@ public class CashSessionService {
         a.setCountedCash(redondear(contado));
         a.setDifference(diferencia);
         a.setObservation(limpio(observacion));
-        return auditRepository.save(a);
+        CashAudit guardado = auditRepository.save(a);
+        apuntar(s.getId(), CashLog.ARQUEO, quien, nombreQuien,
+                "Contó " + money(contado) + " de " + money(esperado) + " esperados"
+                        + (Math.abs(diferencia) < 0.005 ? " · cuadra" : " · " + money(diferencia)));
+        return guardado;
     }
 
     // ─── 5. El cajero cierra ────────────────────────────────────
@@ -314,6 +356,7 @@ public class CashSessionService {
         s.setClosedBy(cajeroId);
         s.setClosedAt(LocalDateTime.now());
         s.setStatus(CashSession.CERRADA);
+        apuntar(s.getId(), CashLog.CERRADO, cajeroId, s.getCashierName(), "Terminó su turno");
         return sessionRepository.save(s);
     }
 
@@ -396,6 +439,10 @@ public class CashSessionService {
         s.setDifference(redondear(contadoEfectivo - efectivo.amount()));
         s.setClosingNotes(limpio(observacion));
         s.setStatus(CashSession.CUADRADA);
+        apuntar(s.getId(), CashLog.CUADRADO, quien, nombreQuien,
+                "Contó " + money(contadoEfectivo) + " en efectivo de "
+                        + money(efectivo.amount()) + " esperados"
+                        + (Math.abs(s.getDifference()) < 0.005 ? " · cuadra" : " · " + money(s.getDifference())));
         return sessionRepository.save(s);
     }
 
@@ -474,6 +521,13 @@ public class CashSessionService {
         m.put("movementsTotal", redondear(movimientos.stream().mapToDouble(CashMovement::delta).sum()));
         m.put("audits", auditRepository.findBySessionIdOrderByCreatedAtAsc(s.getId())
                 .stream().map(CashSessionService::arqueoDto).toList());
+        // El detalle de las ventas que dejaron papel: es el historial que
+        // lleva la boleta de cierre del cajero. Con solo el total, un
+        // voucher de menos se sabe que falta pero no cuál.
+        m.put("voucherSales", sessionRepository.ventasConVoucher(s.getId()).stream()
+                .map(CashSessionService::ventaConVoucherDto).toList());
+        m.put("historial", logRepository.findBySessionIdOrderByCreatedAtAsc(s.getId())
+                .stream().map(CashSessionService::historialDto).toList());
 
         if (CashSession.CERRADA.equals(s.getStatus()) || CashSession.CUADRADA.equals(s.getStatus())) {
             m.put("closedAt", s.getClosedAt());
@@ -558,6 +612,16 @@ public class CashSessionService {
         };
     }
 
+    /** El tipo de movimiento en palabras, para el historial. */
+    private static String etiquetaMovimiento(String tipo) {
+        return switch (tipo) {
+            case CashMovement.INGRESO -> "Entrada";
+            case CashMovement.RETIRO -> "Retiro";
+            case CashMovement.GASTO -> "Gasto";
+            default -> tipo;
+        };
+    }
+
     private static String etiqueta(String forma) {
         return PanelSaleService.FORMAS_DE_PAGO.getOrDefault(forma, forma);
     }
@@ -570,6 +634,31 @@ public class CashSessionService {
         d.put("delta", m.delta());
         d.put("reason", m.getReason());
         d.put("createdAt", m.getCreatedAt());
+        return d;
+    }
+
+    private static Map<String, Object> ventaConVoucherDto(Map<String, Object> fila) {
+        Map<String, Object> d = new LinkedHashMap<>();
+        d.put("at", fila.get("hora"));
+        d.put("orderCode", fila.get("codigo"));
+        Object serie = fila.get("serie");
+        Object numero = fila.get("numero");
+        d.put("boleta", serie == null || numero == null
+                ? null
+                : serie + "-" + String.format("%08d", (int) numero(numero)));
+        d.put("label", fila.get("forma"));
+        d.put("amount", redondear(numero(fila.get("importe"))));
+        d.put("voucher", fila.get("voucher"));
+        return d;
+    }
+
+    private static Map<String, Object> historialDto(CashLog l) {
+        Map<String, Object> d = new LinkedHashMap<>();
+        d.put("id", l.getId());
+        d.put("action", l.getAction());
+        d.put("userName", l.getUserName());
+        d.put("detail", l.getDetail());
+        d.put("createdAt", l.getCreatedAt());
         return d;
     }
 

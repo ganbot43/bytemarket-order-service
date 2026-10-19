@@ -12,6 +12,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Repository
@@ -147,4 +148,32 @@ public interface ICashSessionRepository extends JpaRepository<CashSession, Integ
             WHERE assigned_by IS NULL
             """, nativeQuery = true)
     int traducirTurnosDelModeloViejo();
+
+    /**
+     * Las ventas del turno que dejaron un papel en la mano.
+     *
+     * Es el historial que lleva la boleta de cierre: el cajero se planta
+     * delante del encargado con un fajo de vouchers y este papel dice
+     * cuáles deberían ser, uno por uno. Con solo el total agregado, un
+     * voucher de menos no se puede localizar —se sabe que falta, no cuál—.
+     *
+     * El efectivo no entra: su comprobante es el propio dinero, y meterlo
+     * aquí pondría en el papel del cajero la cifra que el encargado tiene
+     * que contar a ciegas.
+     */
+    @Query(value = """
+            SELECT o.created_at                           AS hora,
+                   o.order_code                           AS codigo,
+                   o.boleta_serie                         AS serie,
+                   o.boleta_numero                        AS numero,
+                   COALESCE(o.payment_method_label, o.payment_method_type) AS forma,
+                   o.total                                AS importe,
+                   o.voucher_number                       AS voucher
+            FROM orders o
+            WHERE o.cash_session_id = :sessionId
+              AND o.status <> 'cancelled'
+              AND o.payment_method_type <> 'efectivo'
+            ORDER BY o.created_at
+            """, nativeQuery = true)
+    List<Map<String, Object>> ventasConVoucher(@Param("sessionId") Integer sessionId);
 }

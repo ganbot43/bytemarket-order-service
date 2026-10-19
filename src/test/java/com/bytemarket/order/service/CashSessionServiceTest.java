@@ -4,7 +4,9 @@ import com.bytemarket.order.model.CashAudit;
 import com.bytemarket.order.model.CashCount;
 import com.bytemarket.order.model.CashMovement;
 import com.bytemarket.order.model.CashSession;
+import com.bytemarket.order.model.CashLog;
 import com.bytemarket.order.repository.ICashAuditRepository;
+import com.bytemarket.order.repository.ICashLogRepository;
 import com.bytemarket.order.repository.ICashCountRepository;
 import com.bytemarket.order.repository.ICashMovementRepository;
 import com.bytemarket.order.repository.ICashSessionRepository;
@@ -35,6 +37,7 @@ class CashSessionServiceTest {
     private ICashMovementRepository movementRepository;
     private ICashCountRepository countRepository;
     private ICashAuditRepository auditRepository;
+    private ICashLogRepository logRepository;
     private CashSessionService servicio;
 
     /** Quien cobra. */
@@ -49,8 +52,9 @@ class CashSessionServiceTest {
         movementRepository = mock(ICashMovementRepository.class);
         countRepository = mock(ICashCountRepository.class);
         auditRepository = mock(ICashAuditRepository.class);
+        logRepository = mock(ICashLogRepository.class);
         servicio = new CashSessionService(sessionRepository, movementRepository,
-                countRepository, auditRepository);
+                countRepository, auditRepository, logRepository);
 
         when(sessionRepository.save(any(CashSession.class))).thenAnswer(i -> {
             CashSession s = i.getArgument(0);
@@ -62,6 +66,9 @@ class CashSessionServiceTest {
         when(movementRepository.findBySessionIdOrderByCreatedAtAsc(anyInt())).thenReturn(List.of());
         when(countRepository.findBySessionIdOrderByMethodAsc(anyInt())).thenReturn(List.of());
         when(auditRepository.findBySessionIdOrderByCreatedAtAsc(anyInt())).thenReturn(List.of());
+        when(logRepository.findBySessionIdOrderByCreatedAtAsc(anyInt())).thenReturn(List.of());
+        when(logRepository.save(any(CashLog.class))).thenAnswer(i -> i.getArgument(0));
+        when(sessionRepository.ventasConVoucher(anyInt())).thenReturn(List.of());
         when(sessionRepository.cobradoEnEfectivo(anyInt())).thenReturn(0d);
         when(sessionRepository.ventasPorForma(anyInt())).thenReturn(List.of());
         when(sessionRepository.findFirstByCashierIdAndStatusIn(any(), any())).thenReturn(Optional.empty());
@@ -148,6 +155,41 @@ class CashSessionServiceTest {
         s = servicio.cuadrar(TURNO, JEFE, "jefe@bytemarket.com", contando("efectivo", 500), null, null);
         assertEquals(CashSession.CUADRADA, s.getStatus());
         assertEquals(JEFE, s.getSettledBy(), "lo firma quien contó, no quien cobró");
+    }
+
+    @Test
+    @DisplayName("cada paso del turno queda apuntado con su autor")
+    void elHistorialRecogeTodo() {
+        // 1. El jefe asigna y habilita: dos apuntes.
+        servicio.asignarFondo(JEFE, "jefe@bytemarket.com", CAJERO, "Ana", "70123456", 300, true);
+        // 2. El cajero abre.
+        turno(CashSession.HABILITADA, 300);
+        servicio.abrir(CAJERO);
+        // 3. El jefe retira y arquea.
+        turno(CashSession.ABIERTA, 300);
+        servicio.registrarMovimiento(TURNO, JEFE, "jefe@bytemarket.com", CashMovement.RETIRO, 50, "al banco");
+        // 300 y no 250: el mock de movimientos devuelve lista vacía, así
+        // que el retiro de arriba no baja el esperado. Lo que se prueba
+        // aquí es el historial, no la resta —ésa tiene las suyas—.
+        servicio.arquear(TURNO, JEFE, "jefe@bytemarket.com", 300, null);
+        // 4. El cajero cierra y el jefe cuadra.
+        servicio.cerrar(TURNO, CAJERO);
+        turno(CashSession.CERRADA, 300);
+        when(sessionRepository.ventasPorForma(TURNO)).thenReturn(List.of(venta("efectivo", 0, 0, 0)));
+        servicio.cuadrar(TURNO, JEFE, "jefe@bytemarket.com", contando("efectivo", 300), null, null);
+
+        ArgumentCaptor<CashLog> captor = ArgumentCaptor.forClass(CashLog.class);
+        verify(logRepository, atLeastOnce()).save(captor.capture());
+        List<String> pasos = captor.getAllValues().stream().map(CashLog::getAction).toList();
+
+        // Los datos ya estaban repartidos entre cuatro tablas; esto es la
+        // línea de tiempo, que es lo que se mira cuando el cuadre sale raro.
+        assertEquals(List.of(CashLog.ASIGNADO, CashLog.HABILITADO, CashLog.ABIERTO,
+                CashLog.MOVIMIENTO, CashLog.ARQUEO, CashLog.CERRADO, CashLog.CUADRADO), pasos);
+
+        CashLog elRetiro = captor.getAllValues().get(3);
+        assertEquals(JEFE, elRetiro.getUserId(), "el retiro lo hizo el jefe");
+        assertTrue(elRetiro.getDetail().contains("al banco"), elRetiro.getDetail());
     }
 
     @Test
@@ -439,7 +481,7 @@ class CashSessionServiceTest {
         when(sessionRepository.cobradoEnEfectivo(TURNO)).thenReturn(50d);
 
         CashSessionService.CajaException e = assertThrows(CashSessionService.CajaException.class,
-                () -> servicio.registrarMovimiento(TURNO, JEFE, CashMovement.RETIRO, 500, "al banco"));
+                () -> servicio.registrarMovimiento(TURNO, JEFE, "jefe@bytemarket.com", CashMovement.RETIRO, 500, "al banco"));
         assertTrue(e.getMessage().contains("150"), "debe decir cuánto hay: " + e.getMessage());
     }
 
@@ -448,14 +490,14 @@ class CashSessionServiceTest {
     void elMotivoEsObligatorio() {
         turno(CashSession.ABIERTA, 100);
         assertThrows(CashSessionService.CajaException.class,
-                () -> servicio.registrarMovimiento(TURNO, JEFE, CashMovement.RETIRO, 10, "  "));
+                () -> servicio.registrarMovimiento(TURNO, JEFE, "jefe@bytemarket.com", CashMovement.RETIRO, 10, "  "));
     }
 
     @Test
     @DisplayName("el movimiento queda a nombre de quien lo hizo")
     void elMovimientoTieneAutor() {
         turno(CashSession.ABIERTA, 1000);
-        CashMovement m = servicio.registrarMovimiento(TURNO, JEFE, CashMovement.RETIRO, 500, "a la caja fuerte");
+        CashMovement m = servicio.registrarMovimiento(TURNO, JEFE, "jefe@bytemarket.com", CashMovement.RETIRO, 500, "a la caja fuerte");
         assertEquals(JEFE, m.getCreatedBy(), "el retiro lo hace el jefe, no el cajero");
     }
 
