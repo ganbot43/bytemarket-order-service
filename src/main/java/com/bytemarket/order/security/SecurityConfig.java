@@ -85,6 +85,22 @@ public class SecurityConfig {
                  * necesita, será con una búsqueda por código exacto, no con
                  * el listado.
                  */
+                /*
+                 * Menos esto, que necesita para cobrar.
+                 *
+                 * sale-options devuelve las formas de pago y los canales, y
+                 * nada más: ni un dato de ningún cliente. Al cerrar el
+                 * listado me lo llevé por delante con el comodín, y la
+                 * consecuencia no se veía por API —las pruebas mandaban
+                 * paymentType a mano— sino en la pantalla: al cajero el
+                 * desplegable se le quedaba con "Efectivo" y nada más, así
+                 * que no podía cobrar con tarjeta ni por Yape.
+                 *
+                 * Va ANTES del comodín de abajo porque Spring se queda con
+                 * la primera regla que casa.
+                 */
+                .requestMatchers(HttpMethod.GET, "/api/admin/orders/sale-options")
+                    .hasAnyRole("CAJERO", "JEFE_VENTAS", "ADMIN", "SUPERADMIN")
                 .requestMatchers(HttpMethod.GET, "/api/admin/orders/**")
                     .hasAnyRole("JEFE_VENTAS", "ADMIN", "SUPERADMIN")
 
