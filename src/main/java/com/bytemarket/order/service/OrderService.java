@@ -34,6 +34,7 @@ public class OrderService {
     private final StockPublisher stockPublisher;
     private final CatalogInventoryClient catalogInventoryClient;
     private final PedidoEventPublisher pedidoEventPublisher;
+    private final NumeracionService numeracionService;
 
     /** Estados por los que puede pasar un pedido, en orden de avance. */
     public static final List<String> ESTADOS = List.of(
@@ -41,6 +42,16 @@ public class OrderService {
 
     /** Estados de los que ya no se sale. El porqué, en changeStatus. */
     public static final List<String> TERMINALES = List.of("delivered", "cancelled");
+
+    /**
+     * Los estados en los que el pedido ya está cobrado.
+     *
+     * Es cuando se emite la boleta. `payment_validated` es el momento en
+     * que alguien dio por bueno el pago; de ahí en adelante el pedido ya
+     * no vuelve atrás, así que emitir después sería emitir tarde.
+     */
+    public static final List<String> COBRADO =
+            List.of("payment_validated", "in_preparation", "delivered");
 
     // ─── Creación ───────────────────────────────────────────────
 
@@ -285,6 +296,27 @@ public class OrderService {
 
         order.setStatus(nuevoEstado);
         order.setUpdatedAt(LocalDateTime.now());
+
+        /*
+         * La boleta se emite cuando el pago queda validado.
+         *
+         * Hasta ahora solo la llevaban las ventas de mostrador, y eso
+         * dejaba al cliente de la web sin comprobante: el del local se iba
+         * con su número y el de internet no tenía nada que descargar.
+         *
+         * Se emite aquí y no al crear el pedido porque un pedido web nace
+         * por cobrar —el cliente sube su voucher y alguien lo valida—, y
+         * el comprobante acompaña al dinero, no al apunte. Es la misma
+         * regla que en caja, donde la venta nace cobrada y por eso sale
+         * con su número en el acto.
+         *
+         * Un pedido que se anula conserva el suyo: lo que corresponde es
+         * una nota de crédito, no reciclar el correlativo.
+         */
+        if (COBRADO.contains(nuevoEstado) && order.getBoletaNumero() == null) {
+            numeracionService.asignarBoleta(order);
+        }
+
         Order guardado = orderRepository.save(order);
         registrarLog(guardado, nuevoEstado, adminUserId, nota);
 

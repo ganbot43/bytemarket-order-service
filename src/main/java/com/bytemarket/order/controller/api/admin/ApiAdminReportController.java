@@ -54,6 +54,20 @@ public class ApiAdminReportController {
 
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("totals", totals);
+        /*
+         * Lo de hoy, partido por canal.
+         *
+         * La cifra de arriba suma mostrador y tienda, y son dos negocios
+         * con costes distintos: con el total solo, no se decide ni el
+         * stock ni a quién poner en la caja. El desglose ya estaba en
+         * Reportes, pero el dashboard es lo que se mira a diario.
+         *
+         * Hasta el final del día de Lima y no "hasta ahora": si no, la
+         * cifra del desglose y la de arriba se pueden separar por una
+         * venta hecha entre las dos consultas.
+         */
+        resp.put("todayByChannel", orderRepository.ventasPorCanal(
+                hoy, HoraDeLima.finDe(HoraDeLima.hoy())));
         resp.put("topProducts", orderRepository.productosMasVendidos(PageRequest.of(0, 5)));
         resp.put("lowStock", bajoStock(lowStockSeguro(threshold)));
         return resp;

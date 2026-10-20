@@ -31,6 +31,7 @@ class OrderServiceTest {
     private StockPublisher stockPublisher;
     private PedidoEventPublisher pedidoEventPublisher;
     private CatalogInventoryClient catalogInventoryClient;
+    private NumeracionService numeracionService;
     private OrderService orderService;
 
     @BeforeEach
@@ -40,9 +41,12 @@ class OrderServiceTest {
         stockPublisher = mock(StockPublisher.class);
         pedidoEventPublisher = mock(PedidoEventPublisher.class);
         catalogInventoryClient = mock(CatalogInventoryClient.class);
+        // La boleta tiene sus propias pruebas en NumeracionServiceTest; aquí
+        // solo hace falta que el pedido cobrado pase por ella.
+        numeracionService = mock(NumeracionService.class);
         orderService = new OrderService(orderRepository, statusLogRepository,
                 mock(IPaymentMethodRepository.class), mock(CartService.class), stockPublisher,
-                catalogInventoryClient, pedidoEventPublisher);
+                catalogInventoryClient, pedidoEventPublisher, numeracionService);
 
         when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
     }
@@ -74,6 +78,36 @@ class OrderServiceTest {
         assertEquals("payment_validated", log.getValue().getStatus());
         assertEquals("Pago verificado", log.getValue().getComments());
         assertEquals(99L, log.getValue().getChangedByUserId());
+    }
+
+    @Test
+    @DisplayName("la boleta del pedido web se emite al validar el pago")
+    void laBoletaLlegaConElCobro() {
+        Order o = pedido("pending");
+
+        // Mientras está por cobrar no hay comprobante: el papel acompaña
+        // al dinero y no al apunte. Es la misma regla que en caja, donde
+        // la venta nace cobrada y por eso sale con su número en el acto.
+        orderService.changeStatus(o, "voucher_sent", null, 1L);
+        verify(numeracionService, never()).asignarBoleta(any(Order.class));
+
+        // Al dar por bueno el pago, sí.
+        orderService.changeStatus(o, "payment_validated", null, 1L);
+        verify(numeracionService).asignarBoleta(o);
+    }
+
+    @Test
+    @DisplayName("un pedido que ya tiene boleta no gasta otro correlativo")
+    void laBoletaNoSeEmiteDosVeces() {
+        Order o = pedido("payment_validated");
+        o.setBoletaSerie("B001");
+        o.setBoletaNumero(7);
+
+        orderService.changeStatus(o, "in_preparation", null, 1L);
+        orderService.changeStatus(o, "delivered", null, 1L);
+
+        verify(numeracionService, never()).asignarBoleta(any(Order.class));
+        assertEquals(7, o.getBoletaNumero(), "se queda con el suyo");
     }
 
     @Test
