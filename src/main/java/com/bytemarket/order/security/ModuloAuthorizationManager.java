@@ -29,10 +29,6 @@ public class ModuloAuthorizationManager implements AuthorizationManager<RequestA
 
     private static final String GERENTE = "superadmin";
 
-    /** Los roles de panel, de mayor a menor: gana el más alto que traiga. */
-    private static final List<String> PIRAMIDE =
-            List.of(GERENTE, "admin", "jefe_ventas", "cajero");
-
     private final PermissionsCache cache;
 
     @Override
@@ -43,8 +39,20 @@ public class ModuloAuthorizationManager implements AuthorizationManager<RequestA
 
         List<String> authorities = auth.getAuthorities().stream().map(Object::toString).toList();
 
-        String rol = PIRAMIDE.stream()
-                .filter(r -> authorities.contains("ROLE_" + r.toUpperCase()))
+        /*
+         * El puesto sale de la autoridad, no de una lista escrita aquí.
+         *
+         * Antes se buscaba en una PIRAMIDE con los cuatro puestos de
+         * fábrica. Desde que los puestos viven en tabla y el gerente puede
+         * crear uno nuevo, esa lista habría dejado a ese puesto sin casar
+         * con nada: denegado en todo, sin un error que lo explicara, y
+         * además en tres servicios a la vez mientras user-service sí lo
+         * reconocía. La autoridad la pone el filtro JWT desde el claim
+         * "role", así que ya es la clave que hace falta.
+         */
+        String rol = authorities.stream()
+                .filter(a -> a.startsWith("ROLE_"))
+                .map(a -> a.substring("ROLE_".length()).toLowerCase())
                 .findFirst().orElse(null);
         if (rol == null) return new AuthorizationDecision(false);
 
