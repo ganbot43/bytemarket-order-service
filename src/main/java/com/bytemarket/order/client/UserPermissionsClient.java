@@ -12,14 +12,16 @@ import java.util.Map;
  * caliente: con los permisos dentro del token, quitarle un módulo a alguien
  * no haría efecto hasta que cerrara sesión.
  *
- * Su fallback NO relanza: devuelve vacío y PermissionsCache decide qué hacer,
- * porque es quien tiene el contexto para decidirlo.
+ * NO tiene fallback a propósito. Con uno que devolvía un mapa vacío, "no
+ * contestó" y "contestó que nadie puede nada" llegaban idénticos a
+ * PermissionsCache, que entonces no podía distinguir un fallo de red de una
+ * respuesta autoritativa. Dejando que la llamada lance, el fallo es una
+ * excepción y una respuesta vacía es una respuesta.
  */
 @FeignClient(
         name = "bytemarket-user-service",
         contextId = "userPermissions",
-        path = "/api/internal",
-        fallback = UserPermissionsClientFallback.class)
+        path = "/api/internal")
 public interface UserPermissionsClient {
 
     @GetMapping("/permissions")

@@ -59,6 +59,14 @@ public final class RutasDeModulo {
 
             new Regla("/api/admin/reports", false, Set.of(), List.of("reportes")),
             new Regla("/api/admin/automation", false, Set.of(), List.of("reportes")),
+            /* Los pedidos que llevan horas abiertos. Está bajo /automation y
+               se pinta en la portada, pero devuelve customerName y
+               customerPhone: es una vista de PEDIDOS, y dejarla en "reportes"
+               filtraba por ahí justo lo que el módulo Pedidos protege —basta
+               conceder Reportes a un cajero para darle nombres y teléfonos de
+               clientes—. El reparto de hoy no cambia: quien tiene Reportes
+               tiene también Pedidos. */
+            new Regla("/api/admin/automation/follow-ups", true, Set.of("GET"), List.of("pedidos")),
             new Regla("/api/admin/coupons", false, Set.of(), List.of("cupones")),
             new Regla("/api/admin/payment-methods", false, Set.of(), List.of("metodos_pago")),
             /* El backfill del kardex: reconstruye movimientos perdidos. */

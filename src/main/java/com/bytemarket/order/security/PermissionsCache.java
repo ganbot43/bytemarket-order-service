@@ -67,13 +67,14 @@ public class PermissionsCache {
         if (matriz != null && ahora < caduca) return matriz;
 
         try {
-            Map<String, Object> respuesta = client.matriz();
-            Map<String, Map<String, Permiso>> leida = interpretar(respuesta);
-            if (!leida.isEmpty()) {
-                matriz = leida;
-                caduca = ahora + TTL_MS;
-                return matriz;
-            }
+            /* Lo que conteste es autoritativo, vacío incluido: "nadie puede
+               nada" es una respuesta legítima y tiene que poder aplicarse.
+               Antes un mapa vacío se trataba como fallo porque el fallback de
+               Feign devolvía eso mismo al caerse la llamada, y los dos casos
+               eran indistinguibles. Ya no hay fallback: un fallo lanza. */
+            matriz = interpretar(client.matriz());
+            caduca = ahora + TTL_MS;
+            return matriz;
         } catch (Exception e) {
             log.warn("No se pudo refrescar la matriz de permisos: {}", e.getMessage());
         }

@@ -113,6 +113,10 @@ class ModuloAuthorizationManagerTest {
         assertTrue(permite("jefe_ventas", "GET", "/api/admin/orders"));
         assertTrue(permite("jefe_ventas", "GET", "/api/admin/reports/dashboard"));
         assertTrue(permite("jefe_ventas", "GET", "/api/admin/automation/stock-alerts"));
+        /* El seguimiento de pedidos abiertos está bajo /automation pero
+           devuelve customerName y customerPhone, así que pide Pedidos. El
+           jefe lo tiene, así que para él no cambia nada. */
+        assertTrue(permite("jefe_ventas", "GET", "/api/admin/automation/follow-ups"));
 
         // Cambiar el estado de un pedido es gestión de tienda, no cuadre.
         assertFalse(permite("jefe_ventas", "PUT", "/api/admin/orders/1234/status"));
@@ -139,6 +143,21 @@ class ModuloAuthorizationManagerTest {
         assertTrue(permite("superadmin", "POST", "/api/admin/caja/cuadrar"));
         assertTrue(permite("superadmin", "DELETE", "/api/admin/coupons/3"));
         verify(cache, never()).permiso(any(), any());
+    }
+
+    @Test
+    @DisplayName("Reportes no abre los datos de contacto de los clientes")
+    void reportesNoFiltraDatosDeClientes() {
+        /* El caso que abre hacer configurable el permiso: si el gerente le
+           concede Reportes a un cajero, no debe venir con los nombres y
+           teléfonos que el módulo Pedidos protege. follow-ups los devuelve,
+           así que pide Pedidos aunque viva bajo /automation. */
+        when(cache.permiso(eq("cajero"), eq("caja"))).thenReturn(TODO);
+        when(cache.permiso(eq("cajero"), eq("reportes"))).thenReturn(TODO);
+
+        assertTrue(permite("cajero", "GET", "/api/admin/reports/dashboard"));
+        assertFalse(permite("cajero", "GET", "/api/admin/automation/follow-ups"),
+                "ahí van nombre y teléfono de cada cliente con un pedido abierto");
     }
 
     @Test
