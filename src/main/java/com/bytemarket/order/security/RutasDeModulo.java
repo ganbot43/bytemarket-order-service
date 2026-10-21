@@ -100,8 +100,24 @@ public final class RutasDeModulo {
         return mejor;
     }
 
-    public static boolean escribe(HttpServletRequest request) {
-        String m = request.getMethod();
-        return !("GET".equals(m) || "HEAD".equals(m) || "OPTIONS".equals(m));
+    /**
+     * Qué acción pide esta petición, según el verbo.
+     *
+     * GET y HEAD consultan, POST da de alta, PUT y PATCH modifican, DELETE da
+     * de baja. Sustituye a tener una regla por verbo en el SecurityConfig,
+     * que es de donde salían los errores de "esta ruta se la llevó por
+     * delante el comodín".
+     *
+     * Un POST que no crea nada —abrir la caja, cuadrar un turno— cuenta como
+     * crear, y es lo correcto: son actos que dejan un registro nuevo, no
+     * consultas.
+     */
+    public static String accion(HttpServletRequest request) {
+        return switch (request.getMethod()) {
+            case "POST" -> "create";
+            case "PUT", "PATCH" -> "edit";
+            case "DELETE" -> "delete";
+            default -> "view";
+        };
     }
 }

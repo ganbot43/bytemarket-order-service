@@ -54,11 +54,8 @@ public class ModuloAuthorizationManager implements AuthorizationManager<RequestA
         List<String> modulos = RutasDeModulo.modulos(context.getRequest());
         if (modulos.isEmpty()) return new AuthorizationDecision(false);
 
-        boolean escribe = RutasDeModulo.escribe(context.getRequest());
-        boolean ok = modulos.stream().anyMatch(m -> {
-            var p = cache.permiso(rol, m);
-            return escribe ? p.editar() : p.ver();
-        });
+        String accion = RutasDeModulo.accion(context.getRequest());
+        boolean ok = modulos.stream().anyMatch(m -> cache.permiso(rol, m).concede(accion));
         return new AuthorizationDecision(ok);
     }
 }

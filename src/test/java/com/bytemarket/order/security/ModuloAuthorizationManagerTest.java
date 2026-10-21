@@ -31,9 +31,9 @@ class ModuloAuthorizationManagerTest {
     private PermissionsCache cache;
     private ModuloAuthorizationManager portero;
 
-    private static final Permiso NADA = new Permiso(false, false);
-    private static final Permiso VER = new Permiso(true, false);
-    private static final Permiso TODO = new Permiso(true, true);
+    private static final Permiso NADA = new Permiso(false, false, false, false);
+    private static final Permiso VER = new Permiso(true, false, false, false);
+    private static final Permiso TODO = new Permiso(true, true, true, true);
 
     @BeforeEach
     void setUp() {

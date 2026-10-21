@@ -53,8 +53,18 @@ public class PermissionsCache {
     private volatile Map<String, Map<String, Permiso>> matriz;
     private volatile long caduca;
 
-    public record Permiso(boolean ver, boolean editar) {
-        public static final Permiso NADA = new Permiso(false, false);
+    /** Las cuatro acciones, tal como las reparte el panel. */
+    public record Permiso(boolean ver, boolean crear, boolean editar, boolean eliminar) {
+        public static final Permiso NADA = new Permiso(false, false, false, false);
+
+        public boolean concede(String accion) {
+            return switch (accion) {
+                case "create" -> crear;
+                case "edit" -> editar;
+                case "delete" -> eliminar;
+                default -> ver;
+            };
+        }
     }
 
     public Permiso permiso(String rol, String modulo) {
@@ -103,7 +113,8 @@ public class PermissionsCache {
             for (var entradaModulo : porModulo.entrySet()) {
                 if (!(entradaModulo.getValue() instanceof Map<?, ?> flags)) continue;
                 permisos.put(String.valueOf(entradaModulo.getKey()), new Permiso(
-                        esSi(flags.get("view")), esSi(flags.get("edit"))));
+                        esSi(flags.get("view")), esSi(flags.get("create")),
+                        esSi(flags.get("edit")), esSi(flags.get("delete"))));
             }
             out.put(String.valueOf(entradaRol.getKey()), Map.copyOf(permisos));
         }
