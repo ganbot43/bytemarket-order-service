@@ -161,6 +161,35 @@ class ModuloAuthorizationManagerTest {
     }
 
     @Test
+    @DisplayName("conceder Dashboard da de verdad las cifras de la portada")
+    void elModuloDashboardConcedeLaPortada() {
+        /* El módulo "dashboard" no tenía ninguna ruta: marcarlo en Roles y
+           permisos solo enseñaba la entrada del menú, y la pantalla seguía
+           pidiendo sus cifras a /reports y /automation, que son de Reportes.
+           Quien recibía solo Dashboard se encontraba una portada que
+           respondía 403 en todo. */
+        when(cache.permiso(eq("cajero"), eq("dashboard"))).thenReturn(VER);
+
+        assertTrue(permite("cajero", "GET", "/api/admin/reports/dashboard"));
+        assertTrue(permite("cajero", "GET", "/api/admin/automation/reports"));
+        assertTrue(permite("cajero", "GET", "/api/admin/automation/stock-alerts"));
+
+        // Pero la portada no abre el resto de Reportes ni los datos de clientes.
+        assertFalse(permite("cajero", "GET", "/api/admin/reports/sales"));
+        assertFalse(permite("cajero", "GET", "/api/admin/reports/export"));
+        assertFalse(permite("cajero", "GET", "/api/admin/automation/follow-ups"),
+                "ahí van nombre y teléfono de cada cliente con un pedido abierto");
+    }
+
+    @Test
+    @DisplayName("quien tiene Reportes sigue entrando a la portada sin Dashboard")
+    void reportesSigueAbriendoLaPortada() {
+        when(cache.permiso(eq("jefe_ventas"), eq("reportes"))).thenReturn(VER);
+        assertTrue(permite("jefe_ventas", "GET", "/api/admin/reports/dashboard"));
+        assertTrue(permite("jefe_ventas", "GET", "/api/admin/automation/stock-alerts"));
+    }
+
+    @Test
     @DisplayName("una ruta de /api/admin sin módulo declarado NO pasa")
     void deniegaPorOmision() {
         assertFalse(permite("admin", "GET", "/api/admin/modulo-que-nadie-declaro"));

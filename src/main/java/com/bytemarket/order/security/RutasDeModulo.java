@@ -35,6 +35,22 @@ public final class RutasDeModulo {
 
     private static final List<String> VENDER = List.of("caja", "pedidos");
 
+    /**
+     * Lo que alimenta la portada del panel.
+     *
+     * El módulo "dashboard" no tenía ninguna ruta: marcarlo en Roles y
+     * permisos solo enseñaba la entrada del menú, y la pantalla seguía
+     * pidiendo sus cifras a /reports y /automation, que son de Reportes.
+     * Conceder Dashboard a alguien le dejaba una portada que respondía 403
+     * en todo —el fallo de "tabla vacía" contra el que avisa este propio
+     * servicio—, y quitárselo no le cerraba nada porque el permiso de
+     * Reportes seguía abriendo las mismas rutas.
+     *
+     * Van los dos módulos y basta con uno: quien administra Reportes sigue
+     * entrando igual, y quien solo tiene la portada ya ve sus cifras.
+     */
+    private static final List<String> PORTADA = List.of("reportes", "dashboard");
+
     private static final List<Regla> REGLAS = List.of(
             /* Registrar una venta. Ruta exacta: /api/admin/orders a secas es
                el alta, y /api/admin/orders/... es la consulta. */
@@ -59,6 +75,12 @@ public final class RutasDeModulo {
 
             new Regla("/api/admin/reports", false, Set.of(), List.of("reportes")),
             new Regla("/api/admin/automation", false, Set.of(), List.of("reportes")),
+            /* Las tres consultas que pinta la portada. No llevan datos de
+               clientes: son cifras del día, el aviso de stock bajo y el
+               resumen de automatizaciones. */
+            new Regla("/api/admin/reports/dashboard", true, Set.of("GET"), PORTADA),
+            new Regla("/api/admin/automation/reports", true, Set.of("GET"), PORTADA),
+            new Regla("/api/admin/automation/stock-alerts", true, Set.of("GET"), PORTADA),
             /* Los pedidos que llevan horas abiertos. Está bajo /automation y
                se pinta en la portada, pero devuelve customerName y
                customerPhone: es una vista de PEDIDOS, y dejarla en "reportes"
