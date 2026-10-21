@@ -29,7 +29,8 @@ public class SecurityConfig {
      */
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
-                                                   JwtAuthenticationFilter jwtAuthFilter) throws Exception {
+                                                   JwtAuthenticationFilter jwtAuthFilter,
+                                                   ModuloAuthorizationManager porModulo) throws Exception {
         http
             .csrf(csrf -> csrf.disable())
             .cors(cors -> cors.disable())
@@ -51,69 +52,23 @@ public class SecurityConfig {
                  * comodín.
                  */
 
-                // Vender: es lo único que hace un cajero.
-                .requestMatchers(HttpMethod.POST, "/api/admin/orders")
-                    .hasAnyRole("CAJERO", "JEFE_VENTAS", "ADMIN", "SUPERADMIN")
                 /*
-                 * Las tres cosas que hace el cajero con su caja: verla,
-                 * abrirla y cerrarla.
+                 * Todo /api/admin lo decide la MATRIZ de permisos.
                  *
-                 * Abrir es suyo porque esa confirmación es la que firma en
-                 * el ticket de apertura: es lo que convierte el fondo en
-                 * responsabilidad suya. Cerrar también, porque cerrar es
-                 * «he acabado el turno», no «esto es lo que hay».
+                 * Aquí había once reglas distinguiendo a mano, verbo por
+                 * verbo, cosas como que abrir y cerrar el turno son del
+                 * cajero pero contarlo y cuadrarlo son de su jefe. Ese
+                 * reparto no se ha perdido: está en RutasDeModulo, que
+                 * traduce cada ruta a su módulo —"caja" lo del cajero,
+                 * "cajas" lo de su jefe— y deja que el método decida si hace
+                 * falta ver o editar.
                  *
-                 * Contar no. Asignar el fondo, mover el efectivo, arquear y
-                 * cuadrar son del jefe: quien vende no cuenta su propio
-                 * cajón. Esas rutas caen en el comodín de abajo.
+                 * El motivo del cambio es que esas once reglas hacían mentir
+                 * a la pantalla de Roles y permisos: quitarle Pedidos a
+                 * alguien escondía el menú y no cerraba la API, y el 8083
+                 * está publicado en el compose.
                  */
-                .requestMatchers(HttpMethod.GET, "/api/admin/caja/sesion")
-                    .hasAnyRole("CAJERO", "JEFE_VENTAS", "ADMIN", "SUPERADMIN")
-                .requestMatchers(HttpMethod.POST, "/api/admin/caja/abrir", "/api/admin/caja/cerrar")
-                    .hasAnyRole("CAJERO", "JEFE_VENTAS", "ADMIN", "SUPERADMIN")
-                /*
-                 * El cajero NO lista pedidos.
-                 *
-                 * Se lo había abierto pensando en "que pueda atender a
-                 * quien pregunta por el suyo", pero ese listado trae el
-                 * nombre, el teléfono, el correo y la dirección de cada
-                 * cliente de la tienda: para resolver una consulta puntual
-                 * se entregaba la base de datos entera.
-                 *
-                 * "Vende y atiende" es el mostrador. La consulta de pedidos
-                 * web es del jefe o del encargado; si algún día el cajero la
-                 * necesita, será con una búsqueda por código exacto, no con
-                 * el listado.
-                 */
-                /*
-                 * Menos esto, que necesita para cobrar.
-                 *
-                 * sale-options devuelve las formas de pago y los canales, y
-                 * nada más: ni un dato de ningún cliente. Al cerrar el
-                 * listado me lo llevé por delante con el comodín, y la
-                 * consecuencia no se veía por API —las pruebas mandaban
-                 * paymentType a mano— sino en la pantalla: al cajero el
-                 * desplegable se le quedaba con "Efectivo" y nada más, así
-                 * que no podía cobrar con tarjeta ni por Yape.
-                 *
-                 * Va ANTES del comodín de abajo porque Spring se queda con
-                 * la primera regla que casa.
-                 */
-                .requestMatchers(HttpMethod.GET, "/api/admin/orders/sale-options")
-                    .hasAnyRole("CAJERO", "JEFE_VENTAS", "ADMIN", "SUPERADMIN")
-                .requestMatchers(HttpMethod.GET, "/api/admin/orders/**")
-                    .hasAnyRole("JEFE_VENTAS", "ADMIN", "SUPERADMIN")
-
-                // Fondos, movimientos, arqueo y cuadre: del jefe de ventas.
-                .requestMatchers("/api/admin/caja/**")
-                    .hasAnyRole("JEFE_VENTAS", "ADMIN", "SUPERADMIN")
-                // Reportes: el jefe los necesita para cuadrar el día.
-                .requestMatchers("/api/admin/reports/**", "/api/admin/automation/**")
-                    .hasAnyRole("JEFE_VENTAS", "ADMIN", "SUPERADMIN")
-
-                // Lo demás —cupones, métodos de pago, cambiar estados— es
-                // gestión de tienda.
-                .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "SUPERADMIN")
+                .requestMatchers("/api/admin/**").access(porModulo)
                 // La sonda queda abierta porque el healthcheck de Docker la
                 // consulta sin credenciales. No filtra nada: con
                 // show-details: when-authorized, al anónimo le responde solo
